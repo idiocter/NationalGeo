@@ -11,6 +11,7 @@ celery = Celery(
     include=[
         "backend.orchestrator.tasks",
         "backend.agents.ingestion.tasks",
+        "backend.agents.provenance.tasks",
         "backend.agents.raster.tasks",
         "backend.agents.change.tasks",
         "backend.agents.evidence.tasks",

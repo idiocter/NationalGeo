@@ -21,6 +21,11 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
     Retries each stage up to MAX_RETRIES times before marking the job partial.
     """
     from backend.agents.change.tasks import run_change_detection  # noqa: PLC0415
+    from backend.agents.ingestion.tasks import run_ingestion_check  # noqa: PLC0415
+    from backend.agents.provenance.tasks import (  # noqa: PLC0415
+        close_record,
+        open_record,
+    )
     from backend.agents.raster.tasks import run_raster_analysis  # noqa: PLC0415
     from backend.agents.validation.tasks import run_validation  # noqa: PLC0415
 
@@ -29,7 +34,14 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
 
     publish_stage_event(job_id, "orchestrator", "running", pct=0)
 
+    # Open provenance record before any stage runs
+    prov_result = open_record.apply(kwargs={"job_id": job_id, "envelope": envelope}).get(timeout=10)
+    provenance_id = prov_result.get("provenance_id")
+    logger.info("Provenance record opened: %s", provenance_id)
+
+    # Phase 1+2 sequential DAG
     stages = [
+        ("ingestion_check", run_ingestion_check),
         ("raster_analysis", run_raster_analysis),
         ("change_detection", run_change_detection),
         ("validation", run_validation),
@@ -37,7 +49,6 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
 
     for stage_name, task_fn in stages:
         publish_stage_event(job_id, stage_name, "running", pct=0)
-        last_exc = None
 
         for attempt in range(1, MAX_RETRIES + 2):
             try:
@@ -46,7 +57,6 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
                 publish_stage_event(job_id, stage_name, "complete", pct=100)
                 break
             except Exception as exc:
-                last_exc = exc
                 logger.warning("Stage %s attempt %d failed: %s", stage_name, attempt, exc)
                 if attempt > MAX_RETRIES:
                     failed_stages.append(stage_name)
@@ -54,11 +64,13 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
                     results[stage_name] = {"error": str(exc)}
 
     final_status = "partial" if failed_stages else "complete"
+    close_record.apply(kwargs={"job_id": job_id, "status": final_status}).get(timeout=10)
     publish_stage_event(job_id, "complete", final_status, pct=100)
 
     return {
         "job_id": job_id,
         "status": final_status,
+        "provenance_id": provenance_id,
         "results": results,
         "failed_stages": failed_stages,
     }
