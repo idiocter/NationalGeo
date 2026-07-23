@@ -1,0 +1,65 @@
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Data files (large binaries tracked separately via DVC or git-lfs if needed)
+data/rasters/
+data/boundaries/*.gpkg
+data/supporting/
+
+# Generated reports and maps (artefacts, not source)
+backend/tests/golden/*.tif
+backend/tests/golden/*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker local overrides
+infra/docker-compose.override.yml
+
+# Alembic auto-generated (keep migrations, ignore temp)
+backend/alembic.ini.local
+
+# ML models (track via git-lfs or DVC)
+infra/models/*.pkl
+infra/models/*.joblib
+
+# Logs
+*.log
+celery_logs/
