@@ -9,6 +9,7 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies import get_session
@@ -81,7 +82,25 @@ async def submit_analysis(
             "boundary_version": envelope.boundary_version,
         },
     )
-    await db.commit()
+
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        detail = str(exc.orig) if exc.orig else str(exc)
+        if "dataset_version" in detail:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Dataset version '{envelope.dataset_version}' is not registered. "
+                       f"Run 'make ingest' to register the COG rasters.",
+            )
+        if "boundary_version" in detail:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Boundary version '{envelope.boundary_version}' is not registered. "
+                       f"Run 'make import-boundaries' then ensure the boundary dataset is registered.",
+            )
+        raise HTTPException(status_code=400, detail=f"Database constraint violation: {detail}")
 
     # Dispatch to Celery orchestrator — pass cache_key so it can populate result_cache
     from backend.orchestrator.tasks import run_analysis  # noqa: PLC0415
