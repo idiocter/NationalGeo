@@ -63,7 +63,7 @@ OutputType = Literal["stats", "change", "maps", "report"]
 
 
 class JobEnvelope(BaseModel):
-    job_id: UUID
+    job_id: UUID | None = None  # server-generated if not provided by client
     municipality_id: str
     years: list[int]
     requested_outputs: list[OutputType]

@@ -81,10 +81,12 @@ async def submit_analysis(
     )
     await db.commit()
 
-    # Dispatch to Celery orchestrator
+    # Dispatch to Celery orchestrator — pass cache_key so it can populate result_cache
     from backend.orchestrator.tasks import run_analysis  # noqa: PLC0415
+    envelope_dict = envelope.model_dump(mode="json")
+    envelope_dict["_cache_key"] = cache_key
     run_analysis.apply_async(
-        kwargs={"job_id": job_id, "envelope": envelope.model_dump(mode="json")},
+        kwargs={"job_id": job_id, "envelope": envelope_dict},
         task_id=job_id,
         queue="orchestrator",
     )
