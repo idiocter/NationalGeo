@@ -75,6 +75,12 @@ export interface TrendPoint {
   classes: LandCoverClass[];
 }
 
+export interface CagrEntry {
+  code: number;
+  class_name: string;
+  cagr_pct: number;
+}
+
 export interface ChangeMatrix {
   municipality_id: string;
   from_year: number;
@@ -82,6 +88,7 @@ export interface ChangeMatrix {
   transitions: Transition[];
   net_change: NetChange[];
   trend_series: TrendPoint[];
+  cagr?: CagrEntry[];
   confidence_note: string;
   provenance_id?: string;
 }

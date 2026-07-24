@@ -45,9 +45,9 @@ export function ChangeChart({ change }: Props) {
           <XAxis dataKey="year" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} unit=" km²" />
           <Tooltip
-            formatter={(val: number, name: string) => [
-              `${val.toLocaleString()} km²`,
-              name,
+            formatter={(val, name) => [
+              typeof val === "number" ? `${val.toLocaleString()} km²` : String(val ?? ""),
+              String(name),
             ]}
           />
           <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11 }} />

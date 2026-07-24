@@ -37,7 +37,7 @@ export function NepalMap({ municipalities, selected, onSelect }: Props) {
         zoom: 6,
       });
 
-      (map as { addControl: (c: unknown) => void }).addControl(new NavigationControl(), "top-right");
+      (map as { addControl: (c: unknown, position?: string) => void }).addControl(new NavigationControl(), "top-right");
       mapRef.current = map;
 
       (map as { on: (ev: string, cb: () => void) => void }).on("load", () => {

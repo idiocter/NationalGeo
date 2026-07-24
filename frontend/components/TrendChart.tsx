@@ -51,9 +51,11 @@ export function TrendChart({ statistics }: Props) {
           <XAxis dataKey="year" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} unit=" km²" width={72} />
           <Tooltip
-            formatter={(val: number, name: string) => [
-              `${val.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²`,
-              name,
+            formatter={(val, name) => [
+              typeof val === "number"
+                ? `${val.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²`
+                : String(val ?? ""),
+              String(name),
             ]}
           />
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
