@@ -1,23 +1,44 @@
 .PHONY: up down logs shell-backend shell-db \
         migrate test test-fast lint typecheck \
-        import-boundaries ingest
+        import-boundaries ingest prepare-dataset \
+        check-docker
+
+# Detect which compose command is available:
+#   docker compose   — Compose V2 plugin (Docker Desktop, docker-ce)
+#   docker-compose   — Compose V1 standalone binary
+COMPOSE := $(shell docker compose version > /dev/null 2>&1 \
+               && echo "docker compose" \
+               || echo "docker-compose")
+
+# ── Pre-flight ────────────────────────────────────────────────────────────────
+
+check-docker:
+	@docker info > /dev/null 2>&1 || ( \
+	  echo ""; \
+	  echo "  Docker daemon is not running."; \
+	  echo ""; \
+	  echo "  macOS options:"; \
+	  echo "    A) Docker Desktop  →  brew install --cask docker  (then open Docker.app)"; \
+	  echo "    B) Colima (no GUI) →  brew install colima docker-compose && colima start"; \
+	  echo ""; \
+	  exit 1 )
 
 # ── Docker Compose ────────────────────────────────────────────────────────────
 
-up:
-	cd infra && docker compose up -d
+up: check-docker
+	cd infra && $(COMPOSE) up -d
 
-down:
-	cd infra && docker compose down
+down: check-docker
+	cd infra && $(COMPOSE) down
 
-logs:
-	cd infra && docker compose logs -f backend worker
+logs: check-docker
+	cd infra && $(COMPOSE) logs -f backend worker
 
-shell-backend:
-	cd infra && docker compose exec backend bash
+shell-backend: check-docker
+	cd infra && $(COMPOSE) exec backend bash
 
-shell-db:
-	cd infra && docker compose exec db psql -U nglip nglip
+shell-db: check-docker
+	cd infra && $(COMPOSE) exec db psql -U nglip nglip
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -42,13 +63,17 @@ typecheck:
 
 # ── Data ops ──────────────────────────────────────────────────────────────────
 
+# Convert raw ICIMOD TIFs to pipeline COGs (run once before make ingest)
+prepare-dataset:
+	python -m backend.scripts.prepare_dataset
+
 import-boundaries:
 	cd backend && python -m backend.scripts.import_boundaries \
 		--file ../data/boundaries/nepal.gpkg
 
-# Usage: make ingest VERSION=landcover-v3.1 SOURCE_DIR=../data/rasters
+# Usage: make ingest VERSION=landcover-v3.1 SOURCE_DIR=../data/landcover/landcover-v3.1
 VERSION    ?= landcover-v3.1
-SOURCE_DIR ?= ../data/rasters
+SOURCE_DIR ?= ../data/landcover/landcover-v3.1
 
 ingest:
 	cd backend && python -m backend.scripts.ingest_rasters \

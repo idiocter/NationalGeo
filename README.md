@@ -30,14 +30,34 @@ PostGIS          COG rasters on disk
 
 ## Prerequisites
 
-| Tool | Minimum version | Install |
-|------|----------------|---------|
-| Docker | 24+ | https://docs.docker.com/get-docker/ |
-| Docker Compose | v2 (plugin) | bundled with Docker Desktop |
-| Python | 3.12 | only needed for local dev / preprocessing |
-| Node.js | 22 | only needed for local frontend dev |
+| Tool | Minimum version | Notes |
+|------|----------------|-------|
+| Docker + Compose | 24+ / V2 | see below |
+| Python | 3.12 | for dataset preprocessing and local dev |
+| Node.js | 22 | for local frontend dev only |
 
-For the dataset preprocessing step you also need `rasterio` in a Python environment (see [Dataset Preparation](#dataset-preparation)).
+### Installing Docker on macOS
+
+`brew install docker` installs only the Docker CLI client — it does **not** include the daemon or Compose plugin. You need one of:
+
+**Option A — Docker Desktop (recommended, all-in-one):**
+```bash
+brew install --cask docker
+# Open Docker.app from /Applications and wait for the whale icon to stop animating
+```
+
+**Option B — Colima (lightweight, no GUI):**
+```bash
+brew install colima docker-compose
+colima start --cpu 4 --memory 8    # adjust to your machine
+# colima start persists across reboots via a launchd service
+```
+
+After either option, verify with:
+```bash
+docker info          # should show server details, not an error
+docker compose version   # or: docker-compose version
+```
 
 ---
 
@@ -245,6 +265,7 @@ cd backend && python -m pytest tests/test_raster_analysis.py -v
 | `make test-fast` | Run tests excluding slow markers |
 | `make lint` | Run ruff linter |
 | `make typecheck` | Run mypy type checker |
+| `make prepare-dataset` | Convert raw ICIMOD TIFs → pipeline COGs |
 | `make import-boundaries` | Import nepal.gpkg into PostGIS |
 | `make ingest` | Register COG rasters in the DB |
 
