@@ -35,7 +35,9 @@ COPY requirements.txt .
 # install the gdal Python package or match the system libgdal version.
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Build context is the backend/ directory; place it under /app/backend/ so
+# all `from backend.xxx` imports resolve correctly with PYTHONPATH=/app.
+COPY . backend/
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
