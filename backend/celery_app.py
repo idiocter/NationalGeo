@@ -18,7 +18,6 @@ celery = Celery(
         "backend.agents.cartography.tasks",
         "backend.agents.narrative.tasks",
         "backend.agents.report.tasks",
-        "backend.agents.provenance.tasks",
         "backend.agents.validation.tasks",
     ],
 )
