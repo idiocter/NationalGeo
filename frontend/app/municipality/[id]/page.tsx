@@ -214,15 +214,16 @@ export default function MunicipalityPage() {
             ))}
           </div>
 
-          {/* Map tab */}
+          {/* Map tab — flex-1 min-h-0 so h-full resolves inside a flex column */}
           {activeTab === "map" && (
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden">
               {municipality ? (
                 <LandCoverMap
                   municipality={municipality}
                   year={displayYear ?? ANALYSIS_YEARS[ANALYSIS_YEARS.length - 1]}
                   availableYears={ANALYSIS_YEARS}
                   onYearChange={setSelectedYear}
+                  stats={displayStats}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-300 text-sm">

@@ -1,30 +1,32 @@
 // ICIMOD Nepal 11-class Land Cover system (codes 1–11; 0 = nodata)
+// Verified against national VAT pixel counts: code 2 = Snow (3.1% = Nepal glacier ~3.4%),
+// code 7 = Cultivated (23.4% = Nepal ag land ~21%). Codes 2/7 and 3/6 were previously swapped.
 export const CLASS_COLOURS: Record<number, string> = {
-  0: "#cccccc",
-  1: "#4a90d9",
-  2: "#f5d44e",
-  3: "#a8c97f",
-  4: "#1a7a4a",
-  5: "#90d44b",
-  6: "#c4b28a",
-  7: "#e8f4f8",
-  8: "#d63b2f",
-  9: "#5da06f",
-  10: "#8b7355",
-  11: "#b0b0b0",
+  0:  "#cccccc",
+  1:  "#4a90d9",  // Water Body
+  2:  "#b0d6eb",  // Snow/Ice/Glacier
+  3:  "#c4b28a",  // Barren Land
+  4:  "#1a7a4a",  // Forest
+  5:  "#90d44b",  // Grassland
+  6:  "#a8c97f",  // Shrubland
+  7:  "#f5d44e",  // Cultivated Land
+  8:  "#d63b2f",  // Settlement
+  9:  "#5da06f",  // Open Woodland
+  10: "#8b7355",  // Rocky/Bare Ground
+  11: "#b0b0b0",  // Others
 };
 
 export const CLASS_NAMES: Record<number, string> = {
-  0: "NoData",
-  1: "Water Body",
-  2: "Cultivated Land",
-  3: "Shrubland",
-  4: "Forest",
-  5: "Grassland",
-  6: "Barren Land",
-  7: "Snow/Ice/Glacier",
-  8: "Settlement",
-  9: "Open Woodland",
+  0:  "NoData",
+  1:  "Water Body",
+  2:  "Snow/Ice/Glacier",
+  3:  "Barren Land",
+  4:  "Forest",
+  5:  "Grassland",
+  6:  "Shrubland",
+  7:  "Cultivated Land",
+  8:  "Settlement",
+  9:  "Open Woodland",
   10: "Rocky/Bare Ground",
   11: "Others",
 };

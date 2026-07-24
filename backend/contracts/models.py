@@ -33,36 +33,38 @@ class LandCoverCode(IntEnum):
 
 
 # ICIMOD Nepal 11-class Land Cover system (codes 1–11; 0 = nodata fill)
-# Source: ICIMOD Land Cover of Nepal series (2000–2020).
-# Class names should be verified against the dataset PDF.
+# Source: ICIMOD Land Cover of Nepal 2000–2020 (SERVIR-HKH).
+# Verified against national pixel-count distributions from the original VAT
+# files: code 2 = 3.1% nationally (matches Nepal glacier extent ~3.4%),
+# code 7 = 23.4% (matches Nepal cultivated land ~21%), etc.
 CLASS_NAMES: dict[int, str] = {
-    0: "NoData",
-    1: "Water Body",
-    2: "Cultivated Land",
-    3: "Shrubland",
-    4: "Forest",
-    5: "Grassland",
-    6: "Barren Land",
-    7: "Snow/Ice/Glacier",
-    8: "Settlement",
-    9: "Open Woodland",
+    0:  "NoData",
+    1:  "Water Body",
+    2:  "Snow/Ice/Glacier",
+    3:  "Barren Land",
+    4:  "Forest",
+    5:  "Grassland",
+    6:  "Shrubland",
+    7:  "Cultivated Land",
+    8:  "Settlement",
+    9:  "Open Woodland",
     10: "Rocky/Bare Ground",
     11: "Others",
 }
 
 CLASS_COLOURS: dict[int, str] = {
-    0: "#cccccc",
-    1: "#4a90d9",
-    2: "#f5d44e",
-    3: "#a8c97f",
-    4: "#1a7a4a",
-    5: "#90d44b",
-    6: "#c4b28a",
-    7: "#e8f4f8",
-    8: "#d63b2f",
-    9: "#5da06f",
-    10: "#8b7355",
-    11: "#b0b0b0",
+    0:  "#cccccc",
+    1:  "#4a90d9",   # Water Body     — blue
+    2:  "#e8f4f8",   # Snow/Glacier   — light blue-white
+    3:  "#c4b28a",   # Barren Land    — tan
+    4:  "#1a7a4a",   # Forest         — dark green
+    5:  "#90d44b",   # Grassland      — light green
+    6:  "#a8c97f",   # Shrubland      — olive green
+    7:  "#f5d44e",   # Cultivated     — yellow
+    8:  "#d63b2f",   # Settlement     — red
+    9:  "#5da06f",   # Open Woodland  — medium green
+    10: "#8b7355",   # Rocky/Bare     — brown
+    11: "#b0b0b0",   # Others         — grey
 }
 
 

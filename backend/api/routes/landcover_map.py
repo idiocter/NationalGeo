@@ -30,21 +30,24 @@ settings = get_settings()
 
 router = APIRouter(prefix="/municipalities", tags=["landcover"])
 
-# ICIMOD 11-class RGBA palette — matches frontend CLASS_COLOURS exactly.
+# ICIMOD 11-class RGBA palette — verified against national VAT pixel counts.
+# Codes 2/7 and 3/6 were previously swapped; corrected here.
 # Nodata (code 0) is fully transparent so the base map shows through.
+_ALPHA = 255  # fully opaque — no basemap behind the overlay
+
 _PALETTE: dict[int, tuple[int, int, int, int]] = {
-    0:  (204, 204, 204,   0),
-    1:  ( 74, 144, 217, 220),
-    2:  (245, 212,  78, 220),
-    3:  (168, 201, 127, 220),
-    4:  ( 26, 122,  74, 220),
-    5:  (144, 212,  75, 220),
-    6:  (196, 178, 138, 220),
-    7:  (232, 244, 248, 220),
-    8:  (214,  59,  47, 220),
-    9:  ( 93, 160, 111, 220),
-    10: (139, 115,  85, 220),
-    11: (176, 176, 176, 220),
+    0:  (  0,   0,   0,   0),  # NoData        — fully transparent
+    1:  ( 74, 144, 217, _ALPHA),  # Water Body    — blue
+    2:  (176, 214, 235, _ALPHA),  # Snow/Glacier  — mid blue (more visible than near-white)
+    3:  (196, 178, 138, _ALPHA),  # Barren Land   — tan
+    4:  ( 26, 122,  74, _ALPHA),  # Forest        — dark green
+    5:  (144, 212,  75, _ALPHA),  # Grassland     — light green
+    6:  (168, 201, 127, _ALPHA),  # Shrubland     — olive green
+    7:  (245, 212,  78, _ALPHA),  # Cultivated    — yellow
+    8:  (214,  59,  47, _ALPHA),  # Settlement    — red
+    9:  ( 93, 160, 111, _ALPHA),  # Open Woodland — medium green
+    10: (139, 115,  85, _ALPHA),  # Rocky/Bare    — brown
+    11: (176, 176, 176, _ALPHA),  # Others        — grey
 }
 
 # Fallback colour for any unexpected class code
@@ -157,7 +160,7 @@ async def landcover_png(
         content=png_bytes,
         media_type="image/png",
         headers={
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": "no-store",
             "X-Bbox-West":  str(west),
             "X-Bbox-South": str(south),
             "X-Bbox-East":  str(east),
