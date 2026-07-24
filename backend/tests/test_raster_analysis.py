@@ -76,7 +76,7 @@ class TestAnalyseYearPixelCounting:
         geom = _geom_covering(500000, 3100000, 30.0, 3, 2)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         codes = {c.code: c.pixels for c in stats.classes}
         assert codes[1] == 3   # Forest
@@ -90,7 +90,7 @@ class TestAnalyseYearPixelCounting:
         geom = _geom_covering(500000, 3100000, 30.0, 3, 2)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         assert stats.total_pixels == 3  # only Forest pixels
         codes = {c.code: c.pixels for c in stats.classes}
@@ -102,7 +102,7 @@ class TestAnalyseYearPixelCounting:
         geom = _geom_covering(500000, 3100000, 30.0, 5, 4)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         total_share = sum(c.share_pct for c in stats.classes)
         assert abs(total_share - 100.0) < 0.01
@@ -114,7 +114,7 @@ class TestAnalyseYearPixelCounting:
         geom = _geom_covering(500000, 3100000, 30.0, 2, 2)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         assert stats.cloud_or_nodata_pct == pytest.approx(50.0, abs=1.0)
 
@@ -126,7 +126,7 @@ class TestAnalyseYearArea:
         geom = _geom_covering(500000, 3100000, 30.0, 10, 10)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         forest = next(c for c in stats.classes if c.code == 1)
         expected_km2 = forest.pixels * 900.0 / 1_000_000  # 30m × 30m = 900 m²
@@ -138,17 +138,18 @@ class TestAnalyseYearArea:
         geom = _geom_covering(500000, 3100000, 30.0, 5, 5)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         assert stats.crs_used == "EPSG:32645"
 
     def test_raises_for_missing_cog(self, tmp_path):
         from shapely.geometry import box
         geom = box(84.0, 27.0, 85.0, 28.0)  # valid WGS84 bbox
+        missing = tmp_path / "missing.tif"  # does not exist
 
         with pytest.raises(FileNotFoundError):
             analyse_year(geom, year=2099, dataset_version="nonexistent",
-                         municipality_id="test", boundary_version="b1")
+                         municipality_id="test", boundary_version="b1", cog_path=missing)
 
 
 class TestAnalyseYearQualityFlags:
@@ -158,7 +159,7 @@ class TestAnalyseYearQualityFlags:
         geom = _geom_covering(500000, 3100000, 30.0, 5, 5)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         assert stats.data_quality_flags == []
 
@@ -169,7 +170,7 @@ class TestAnalyseYearQualityFlags:
         geom = _geom_covering(500000, 3100000, 30.0, 10, 1)
 
         stats = analyse_year(geom, year=2010, dataset_version="v1",
-                             municipality_id="test", boundary_version="b1")
+                             municipality_id="test", boundary_version="b1", cog_path=cog)
 
         assert any("nodata" in f for f in stats.data_quality_flags)
 
@@ -198,7 +199,7 @@ class TestGoldenSyntheticMunicipality:
         geom = _geom_covering(500000, 3100000, 30.0, 20, 20)
 
         stats = analyse_year(geom, year=2015, dataset_version="v1",
-                             municipality_id="test-golden", boundary_version="b1")
+                             municipality_id="test-golden", boundary_version="b1", cog_path=cog)
 
         forest = next(c for c in stats.classes if c.code == 1)
         agri = next(c for c in stats.classes if c.code == 2)

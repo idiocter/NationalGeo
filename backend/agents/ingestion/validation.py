@@ -63,6 +63,7 @@ def read_metadata(path: Path, year: int) -> RasterMetadata:
             nodata=src.nodata,
             dtype=str(src.dtypes[0]),
             band_count=src.count,
+            checksum=checksum,
         )
 
 

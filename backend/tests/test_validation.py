@@ -63,14 +63,27 @@ class TestCheckShareSum:
         assert _check_share_sum([stats]) == []
 
     def test_95_pct_blocked(self):
-        stats = _stats(2000, [_cls(1, 100.0, 45.0), _cls(2, 100.0, 50.0)])
+        # model_construct bypasses Pydantic validators — needed to simulate corrupted DB data
+        stats = LandCoverStatistics.model_construct(
+            year=2000, municipality_id="test", boundary_version="b1",
+            dataset_version="v1", crs_used="EPSG:32645", pixel_area_m2=900.0,
+            total_pixels=200, classes=[_cls(1, 100.0, 45.0), _cls(2, 100.0, 50.0)],
+            unclassified_pct=0.0, cloud_or_nodata_pct=0.0, edge_pixel_fraction=0.0,
+            data_quality_flags=[],
+        )
         results = _check_share_sum([stats])
         assert len(results) == 1
         assert results[0].status == "block"
 
     def test_multiple_years_each_checked(self):
         good = _stats(2000, [_cls(1, 100.0, 50.0), _cls(2, 100.0, 50.0)])
-        bad = _stats(2005, [_cls(1, 100.0, 40.0), _cls(2, 100.0, 40.0)])
+        bad = LandCoverStatistics.model_construct(
+            year=2005, municipality_id="test", boundary_version="b1",
+            dataset_version="v1", crs_used="EPSG:32645", pixel_area_m2=900.0,
+            total_pixels=200, classes=[_cls(1, 100.0, 40.0), _cls(2, 100.0, 40.0)],
+            unclassified_pct=0.0, cloud_or_nodata_pct=0.0, edge_pixel_fraction=0.0,
+            data_quality_flags=[],
+        )
         results = _check_share_sum([good, bad])
         assert len(results) == 1
         assert "2005" in results[0].id

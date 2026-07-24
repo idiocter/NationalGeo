@@ -61,17 +61,18 @@ def analyse_year(
     dataset_version: str,
     municipality_id: str,
     boundary_version: str,
+    cog_path: Path | None = None,
 ) -> LandCoverStatistics:
     """Compute land-cover statistics for one municipality in one year.
 
-    Reads: the COG at <object_store>/landcover/<version>/<year>.tif
+    Reads: cog_path if provided, else <object_store>/landcover/<version>/<year>.tif
     Returns: LandCoverStatistics (Pydantic contract).
     Raises: FileNotFoundError if the COG is missing.
     """
     import rasterio
     from rasterio.mask import mask as rasterio_mask
 
-    cog = _cog_path(dataset_version, year)
+    cog = cog_path or _cog_path(dataset_version, year)
     if not cog.exists():
         raise FileNotFoundError(f"COG not found for year {year}: {cog}")
 
