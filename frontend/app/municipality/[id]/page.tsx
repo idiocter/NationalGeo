@@ -27,8 +27,12 @@ export default function MunicipalityPage() {
   const [result, setResult] = useState<JobResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  // Tracks cache-hit responses where submit() already returns status=complete
+  // without going through the Celery/SSE path.
+  const [cacheHitDone, setCacheHitDone] = useState(false);
 
-  const { stages, isDone } = useJobStream(jobId);
+  const { stages, isDone: streamDone } = useJobStream(jobId);
+  const isDone = streamDone || cacheHitDone;
 
   useEffect(() => {
     api.municipalities.get(id).then(setMunicipality).catch(console.error);
@@ -47,6 +51,7 @@ export default function MunicipalityPage() {
         setJobId(res.job_id);
         if (res.status === "complete" && res.result) {
           setResult(res.result as JobResult);
+          setCacheHitDone(true);
         }
       })
       .catch((e: Error) => setSubmitError(e.message));
@@ -102,7 +107,7 @@ export default function MunicipalityPage() {
             QA: {validation.verdict.toUpperCase()}
           </span>
         )}
-        {jobId && isDone && (
+        {jobId && (isDone || result !== null) && (
           <a
             href={api.analysis.reportCsvUrl(jobId)}
             download
