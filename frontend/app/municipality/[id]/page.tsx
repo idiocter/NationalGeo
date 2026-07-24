@@ -15,7 +15,7 @@ import {
   DEFAULT_BOUNDARY_VERSION,
   DEFAULT_DATASET_VERSION,
 } from "@/lib/constants";
-import type { JobResult, Municipality } from "@/types/api";
+import type { JobResult, LandCoverStatistics, Municipality } from "@/types/api";
 
 export default function MunicipalityPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,34 +25,32 @@ export default function MunicipalityPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<JobResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
 
   const { stages, isDone } = useJobStream(jobId);
 
-  // Load municipality metadata
   useEffect(() => {
     api.municipalities.get(id).then(setMunicipality).catch(console.error);
   }, [id]);
 
-  // Submit analysis job on mount
   useEffect(() => {
     api.analysis
       .submit({
         municipality_id: id,
         years: ANALYSIS_YEARS,
-        requested_outputs: ["stats", "change", "maps", "report"],
+        requested_outputs: ["stats", "change"],
         dataset_version: DEFAULT_DATASET_VERSION,
         boundary_version: DEFAULT_BOUNDARY_VERSION,
       })
       .then((res) => {
         setJobId(res.job_id);
         if (res.status === "complete" && res.result) {
-          setResult(res.result);
+          setResult(res.result as JobResult);
         }
       })
       .catch((e: Error) => setSubmitError(e.message));
   }, [id]);
 
-  // Poll for result once stream signals completion
   useEffect(() => {
     if (isDone && jobId && !result) {
       api.analysis.getJob(jobId).then((job) => {
@@ -63,12 +61,26 @@ export default function MunicipalityPage() {
     }
   }, [isDone, jobId, result]);
 
-  const latestStats = result?.statistics?.[result.statistics.length - 1];
-  const latestChange = result?.change_matrix?.[0];
+  // Pick the stats to display — user-selected year or latest available
+  const availableStats: LandCoverStatistics[] = result?.statistics ?? [];
+  const availableYears = availableStats.map((s) => s.year).sort((a, b) => a - b);
+  const displayYear = selectedYear ?? availableYears[availableYears.length - 1] ?? null;
+  const displayStats = availableStats.find((s) => s.year === displayYear) ?? null;
+
+  const changeMatrix = result?.change_matrix?.[0] ?? null;
+  const validation = result?.validation ?? null;
+
+  const verdictColour =
+    validation?.verdict === "pass"
+      ? "bg-green-50 text-green-700 border-green-200"
+      : validation?.verdict === "warn"
+        ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+        : validation?.verdict === "block"
+          ? "bg-red-50 text-red-700 border-red-200"
+          : "";
 
   return (
     <main className="h-screen flex flex-col">
-      {/* Header */}
       <header className="h-12 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shrink-0">
         <button
           onClick={() => router.push("/")}
@@ -82,63 +94,111 @@ export default function MunicipalityPage() {
         </span>
         {municipality && (
           <span className="text-xs text-gray-400">
-            {municipality.province} · {municipality.type.replace("_", " ")}
+            {municipality.province} · {municipality.type.replace(/_/g, " ")}
+          </span>
+        )}
+        {validation && (
+          <span className={`ml-auto text-xs border rounded px-2 py-0.5 ${verdictColour}`}>
+            QA: {validation.verdict.toUpperCase()}
           </span>
         )}
       </header>
 
       <div className="flex-1 overflow-hidden flex">
-        {/* Sidebar */}
-        <aside className="w-80 shrink-0 border-r border-gray-100 overflow-y-auto p-4 space-y-6">
+        <aside className="w-80 shrink-0 border-r border-gray-100 overflow-y-auto p-4 space-y-5">
           {submitError && (
             <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-3">
               {submitError}
             </div>
           )}
 
-          {/* Progress stream */}
-          {jobId && !result && (
+          {/* Progress stream — visible while running and after completion */}
+          {jobId && (
             <section>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Analysis progress
+                {isDone ? "Stages completed" : "Analysis progress"}
               </h3>
               <AnalysisStream stages={stages} isDone={isDone} />
             </section>
           )}
 
-          {/* Statistics */}
-          {latestStats && (
+          {/* Year selector */}
+          {availableYears.length > 1 && (
             <section>
-              <StatisticsPanel stats={latestStats} />
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
+                Year
+              </label>
+              <select
+                value={displayYear ?? ""}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 bg-white"
+              >
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
             </section>
           )}
 
-          {/* Evidence */}
+          {/* Statistics table */}
+          {displayStats && (
+            <section>
+              <StatisticsPanel stats={displayStats} />
+            </section>
+          )}
+
+          {/* Validation warnings */}
+          {validation?.verdict === "warn" && (
+            <section>
+              <h3 className="text-xs font-semibold text-yellow-600 uppercase tracking-wide mb-2">
+                Data quality notes
+              </h3>
+              <ul className="space-y-1">
+                {validation.checks
+                  .filter((c) => c.status === "warn")
+                  .map((c) => (
+                    <li key={c.id} className="text-xs text-yellow-700 bg-yellow-50 rounded p-2">
+                      {c.detail}
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Evidence — Phase 3 */}
           {result?.evidence && result.evidence.length > 0 && (
             <section>
               <EvidencePanel evidence={result.evidence} />
             </section>
           )}
 
-          {/* Report download */}
-          {result && result.artefacts && (
+          {/* Report download — Phase 4 */}
+          {result?.artefacts && (
             <section>
               <ReportDownload result={result} />
             </section>
           )}
         </aside>
 
-        {/* Main content — chart area */}
+        {/* Main: trend chart */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {latestChange && (
+          {changeMatrix && (
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <ChangeChart change={latestChange} />
+              <ChangeChart change={changeMatrix} />
             </div>
           )}
 
           {!result && !submitError && (
             <div className="flex items-center justify-center h-full text-gray-300 text-sm">
               Analysis running…
+            </div>
+          )}
+
+          {result && !changeMatrix && (
+            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+              No change data available.
             </div>
           )}
         </div>

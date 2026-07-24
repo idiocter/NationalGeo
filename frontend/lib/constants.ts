@@ -35,4 +35,6 @@ export const STAGE_LABELS: Record<string, string> = {
 
 export const DEFAULT_DATASET_VERSION = "landcover-v3.1";
 export const DEFAULT_BOUNDARY_VERSION = "mof-2021";
-export const ANALYSIS_YEARS = [2000, 2022];
+
+// Full 23-year Nepal land-cover series (2000–2022)
+export const ANALYSIS_YEARS: number[] = Array.from({ length: 23 }, (_, i) => 2000 + i);

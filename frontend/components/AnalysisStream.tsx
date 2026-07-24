@@ -3,15 +3,12 @@
 import { STAGE_LABELS } from "@/lib/constants";
 import type { StageEvent } from "@/types/api";
 
+// Phase 2 stages — extended in Phase 3/4 when those agents are implemented
 const STAGE_ORDER = [
   "orchestrator",
   "raster_analysis",
   "change_detection",
-  "evidence",
-  "cartography",
-  "narrative",
   "validation",
-  "report",
 ];
 
 interface Props {
