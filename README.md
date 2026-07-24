@@ -155,10 +155,10 @@ cd infra && docker compose --profile narrative up -d
 
 ### 4. Database schema
 
-The PostGIS schema is applied automatically from `infra/sql/init.sql` the first time the `db` container starts. If you need to reset or apply Alembic migrations:
+The PostGIS schema is applied automatically from `infra/sql/init.sql` the first time the `db` container starts. If you need to apply Alembic migrations later:
 
 ```bash
-make migrate    # runs: alembic upgrade head
+make migrate    # runs alembic inside the backend container — requires make up first
 ```
 
 To open a database shell:
@@ -260,11 +260,11 @@ cd backend && python -m pytest tests/test_raster_analysis.py -v
 | `make logs` | Tail backend and worker logs |
 | `make shell-backend` | Open bash inside the backend container |
 | `make shell-db` | Open psql inside the db container |
-| `make migrate` | Apply Alembic migrations |
-| `make test` | Run full test suite |
-| `make test-fast` | Run tests excluding slow markers |
-| `make lint` | Run ruff linter |
-| `make typecheck` | Run mypy type checker |
+| `make migrate` | Apply Alembic migrations (runs inside backend container) |
+| `make test` | Run full test suite (local, no Docker needed) |
+| `make test-fast` | Run tests excluding slow markers (local) |
+| `make lint` | Run ruff linter (local) |
+| `make typecheck` | Run mypy type checker (local) |
 | `make prepare-dataset` | Convert raw ICIMOD TIFs → pipeline COGs |
 | `make import-boundaries` | Import nepal.gpkg into PostGIS |
 | `make ingest` | Register COG rasters in the DB |

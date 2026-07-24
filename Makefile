@@ -41,11 +41,15 @@ shell-db: check-docker
 	cd infra && $(COMPOSE) exec db psql -U nglip nglip
 
 # ── Database ──────────────────────────────────────────────────────────────────
+# Runs inside the backend container (alembic is not installed on the host).
+# Requires: make up to be running first.
 
-migrate:
-	cd backend && alembic upgrade head
+migrate: check-docker
+	cd infra && $(COMPOSE) exec backend alembic upgrade head
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
+# Tests run locally — no Docker needed (all tests use synthetic data).
+# Activate your venv first: source .venv/bin/activate
 
 test:
 	cd backend && python -m pytest tests/ -v
@@ -56,26 +60,32 @@ test-fast:
 # ── Code quality ──────────────────────────────────────────────────────────────
 
 lint:
-	cd backend && ruff check .
+	cd backend && python -m ruff check .
 
 typecheck:
-	cd backend && mypy .
+	cd backend && python -m mypy .
 
 # ── Data ops ──────────────────────────────────────────────────────────────────
 
-# Convert raw ICIMOD TIFs to pipeline COGs (run once before make ingest)
+# Preprocess raw ICIMOD TIFs → pipeline COGs.
+# Runs locally (reads/writes data/ which is on the host).
+# Requires rasterio: pip install rasterio pyproj  (already in .venv)
 prepare-dataset:
 	python -m backend.scripts.prepare_dataset
 
-import-boundaries:
-	cd backend && python -m backend.scripts.import_boundaries \
-		--file ../data/boundaries/nepal.gpkg
+# Import and ingest run inside the backend container where PostGIS is reachable.
+# Requires: make up to be running first.
 
-# Usage: make ingest VERSION=landcover-v3.1 SOURCE_DIR=../data/landcover/landcover-v3.1
-VERSION    ?= landcover-v3.1
-SOURCE_DIR ?= ../data/landcover/landcover-v3.1
+import-boundaries: check-docker
+	cd infra && $(COMPOSE) exec backend \
+		python -m backend.scripts.import_boundaries \
+		--file /data/boundaries/nepal.gpkg
 
-ingest:
-	cd backend && python -m backend.scripts.ingest_rasters \
-		--source-dir $(SOURCE_DIR) \
+# Usage: make ingest VERSION=landcover-v3.1
+VERSION ?= landcover-v3.1
+
+ingest: check-docker
+	cd infra && $(COMPOSE) exec backend \
+		python -m backend.scripts.ingest_rasters \
+		--source-dir /data/landcover/$(VERSION) \
 		--version $(VERSION)
