@@ -1,6 +1,6 @@
 .PHONY: up down logs shell-backend shell-db \
         migrate test test-fast lint typecheck \
-        import-boundaries ingest prepare-dataset \
+        fetch-boundaries import-boundaries ingest prepare-dataset \
         check-docker
 
 # Detect which compose command is available:
@@ -76,10 +76,15 @@ prepare-dataset:
 # Import and ingest run inside the backend container where PostGIS is reachable.
 # Requires: make up to be running first.
 
+# Download Nepal local-unit boundaries from OCHA COD (one-time, runs locally).
+# Requires: pip install geopandas pyogrio requests  (or: source .venv/bin/activate)
+fetch-boundaries:
+	python -m backend.scripts.download_boundaries
+
 import-boundaries: check-docker
 	cd infra && $(COMPOSE) exec backend \
 		python -m backend.scripts.import_boundaries \
-		--file /data/boundaries/nepal.gpkg
+		--file /data/boundaries/nepal_local_units.gpkg
 
 # Usage: make ingest VERSION=landcover-v3.1
 VERSION ?= landcover-v3.1

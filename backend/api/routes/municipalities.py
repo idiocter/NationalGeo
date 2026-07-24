@@ -9,13 +9,19 @@ router = APIRouter(prefix="/municipalities", tags=["municipalities"])
 
 @router.get("")
 async def list_municipalities(db: AsyncSession = Depends(get_session)) -> list[dict]:
-    """Return all 753 Nepal local units with id, name, province, type, and bbox."""
+    """Return all Nepal local units with metadata and simplified boundary geometry.
+
+    Geometry is simplified to 0.001° tolerance (~100 m) so the full list
+    response stays under ~5 MB while retaining enough detail for map display.
+    """
     result = await db.execute(
         text(
             """
             SELECT id, name, name_np, province, district, type,
                    total_area_km2, population,
-                   ST_AsGeoJSON(ST_Envelope(geom))::json AS bbox
+                   ST_AsGeoJSON(
+                       ST_Multi(ST_SimplifyPreserveTopology(geom, 0.001))
+                   )::json AS geometry
             FROM municipalities
             ORDER BY province, name
             """
