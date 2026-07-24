@@ -16,10 +16,10 @@ from backend.config import get_settings
 
 settings = get_settings()
 
-# Convert asyncpg URL → psycopg2 URL for the sync engine
-_sync_url = settings.database_url.replace(
-    "postgresql+asyncpg://", "postgresql+psycopg2://"
-)
+# Convert any postgresql:// or postgresql+asyncpg:// URL to psycopg2 for the sync engine
+_raw_url = settings.database_url
+_suffix = _raw_url.split("://", 1)[1]
+_sync_url = f"postgresql+psycopg2://{_suffix}"
 
 sync_engine = create_engine(
     _sync_url,

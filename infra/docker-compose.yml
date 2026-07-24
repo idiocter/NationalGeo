@@ -39,7 +39,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://nglip:${POSTGRES_PASSWORD:-dev_password_change_in_prod}@db:5432/nglip
+      DATABASE_URL: postgresql+asyncpg://nglip:${POSTGRES_PASSWORD:-dev_password_change_in_prod}@db:5432/nglip
       REDIS_URL: redis://redis:6379/0
       OBJECT_STORE_PATH: /data
       OLLAMA_URL: http://ollama:11434
@@ -60,7 +60,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://nglip:${POSTGRES_PASSWORD:-dev_password_change_in_prod}@db:5432/nglip
+      DATABASE_URL: postgresql+asyncpg://nglip:${POSTGRES_PASSWORD:-dev_password_change_in_prod}@db:5432/nglip
       REDIS_URL: redis://redis:6379/0
       OBJECT_STORE_PATH: /data
       OLLAMA_URL: http://ollama:11434
