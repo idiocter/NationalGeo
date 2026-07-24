@@ -51,7 +51,7 @@ def finalise_job(job_id: str, status: str, cache_key: str | None = None) -> None
                     text(
                         """
                         INSERT INTO result_cache (cache_key, job_id, result)
-                        VALUES (:key, :job_id, :result::jsonb)
+                        VALUES (:key, :job_id, CAST(:result AS jsonb))
                         ON CONFLICT (cache_key) DO NOTHING
                         """
                     ),

@@ -214,7 +214,7 @@ class RasterAnalysisAgent:
             text(
                 """
                 UPDATE jobs
-                SET result = COALESCE(result, '{}'::jsonb) || :patch::jsonb,
+                SET result = COALESCE(result, '{}'::jsonb) || CAST(:patch AS jsonb),
                     status = 'running',
                     started_at = COALESCE(started_at, NOW())
                 WHERE id = :job_id

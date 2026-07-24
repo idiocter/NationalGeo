@@ -49,10 +49,13 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
 
     publish_stage_event(job_id, "orchestrator", "running", pct=0)
 
-    # Open provenance record before any stage runs
+    # Open provenance record before any stage runs.
+    # disable_sync_subtasks=False: explicit opt-in for an orchestrator that
+    # coordinates subtasks synchronously — avoids Celery 5's default guard
+    # against .get() inside a task.
     prov_result = open_record.apply(
         kwargs={"job_id": job_id, "envelope": envelope}
-    ).get(timeout=10)
+    ).get(timeout=10, disable_sync_subtasks=False)
     provenance_id: str = prov_result.get("provenance_id", "")
     logger.info("Provenance record opened: %s", provenance_id)
 
@@ -72,7 +75,7 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
             try:
                 result = task_fn.apply(
                     kwargs={"job_id": job_id, "envelope": envelope}
-                ).get(timeout=timeout)
+                ).get(timeout=timeout, disable_sync_subtasks=False)
                 results[stage_name] = result
                 publish_stage_event(job_id, stage_name, "complete", pct=100)
                 succeeded = True
@@ -107,7 +110,7 @@ def run_analysis(self: Task, job_id: str, envelope: dict) -> dict:
 
     close_record.apply(
         kwargs={"job_id": job_id, "status": final_status}
-    ).get(timeout=10)
+    ).get(timeout=10, disable_sync_subtasks=False)
 
     publish_stage_event(job_id, "complete", final_status, pct=100)
 

@@ -118,7 +118,7 @@ class ValidationAgent:
                 INSERT INTO validation_verdicts
                     (job_id, verdict, checks, blocked_artefacts, warnings)
                 VALUES
-                    (:job_id, :verdict, :checks::jsonb, :blocked::text[], :warnings::text[])
+                    (:job_id, :verdict, CAST(:checks AS jsonb), CAST(:blocked AS text[]), CAST(:warnings AS text[]))
                 """
             ),
             {
@@ -135,7 +135,7 @@ class ValidationAgent:
             text(
                 """
                 UPDATE jobs
-                SET result = COALESCE(result, '{}'::jsonb) || :patch::jsonb
+                SET result = COALESCE(result, '{}'::jsonb) || CAST(:patch AS jsonb)
                 WHERE id = :job_id
                 """
             ),

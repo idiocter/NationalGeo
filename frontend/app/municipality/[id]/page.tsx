@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AnalysisStream } from "@/components/AnalysisStream";
 import { ChangeChart } from "@/components/ChangeChart";
 import { EvidencePanel } from "@/components/EvidencePanel";
+import { LandCoverMap } from "@/components/LandCoverMap";
 import { NetChangeTable } from "@/components/NetChangeTable";
 import { StatisticsPanel } from "@/components/StatisticsPanel";
 import { TrendChart } from "@/components/TrendChart";
@@ -27,6 +28,7 @@ export default function MunicipalityPage() {
   const [result, setResult] = useState<JobResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"map" | "charts">("map");
   // Tracks cache-hit responses where submit() already returns status=complete
   // without going through the Celery/SSE path.
   const [cacheHitDone, setCacheHitDone] = useState(false);
@@ -194,30 +196,68 @@ export default function MunicipalityPage() {
           )}
         </aside>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Multi-year trend line chart */}
-          {availableStats.length >= 2 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <TrendChart statistics={availableStats} />
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Tab bar */}
+          <div className="flex border-b border-gray-100 bg-white shrink-0 px-4">
+            {(["map", "charts"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`text-xs px-4 py-2.5 border-b-2 transition-colors capitalize ${
+                  activeTab === tab
+                    ? "border-blue-600 text-blue-600 font-semibold"
+                    : "border-transparent text-gray-400 hover:text-gray-700"
+                }`}
+              >
+                {tab === "map" ? "Land Cover Map" : "Charts & Tables"}
+              </button>
+            ))}
+          </div>
+
+          {/* Map tab */}
+          {activeTab === "map" && (
+            <div className="flex-1 overflow-hidden">
+              {municipality ? (
+                <LandCoverMap
+                  municipality={municipality}
+                  year={displayYear ?? ANALYSIS_YEARS[ANALYSIS_YEARS.length - 1]}
+                  availableYears={ANALYSIS_YEARS}
+                  onYearChange={setSelectedYear}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-300 text-sm">
+                  Loading municipality…
+                </div>
+              )}
             </div>
           )}
 
-          {/* Change matrix stacked area chart */}
-          {changeMatrix && changeMatrix.trend_series.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <ChangeChart change={changeMatrix} />
-            </div>
-          )}
+          {/* Charts tab */}
+          {activeTab === "charts" && (
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {availableStats.length >= 2 && (
+                <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+                  <TrendChart statistics={availableStats} />
+                </div>
+              )}
 
-          {!result && !submitError && (
-            <div className="flex items-center justify-center h-full text-gray-300 text-sm">
-              Analysis running…
-            </div>
-          )}
+              {changeMatrix && changeMatrix.trend_series.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+                  <ChangeChart change={changeMatrix} />
+                </div>
+              )}
 
-          {result && availableStats.length === 0 && (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-              No statistics available.
+              {!result && !submitError && (
+                <div className="flex items-center justify-center h-full text-gray-300 text-sm">
+                  Analysis running…
+                </div>
+              )}
+
+              {result && availableStats.length === 0 && (
+                <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                  No statistics available.
+                </div>
+              )}
             </div>
           )}
         </div>

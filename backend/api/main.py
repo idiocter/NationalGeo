@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api.routes.analysis import router as analysis_router
+from backend.api.routes.landcover_map import router as landcover_map_router
 from backend.api.routes.municipalities import router as municipalities_router
 from backend.api.routes.provenance import router as provenance_router
 from backend.config import get_settings
@@ -31,9 +32,11 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
+    expose_headers=["X-Bbox-West", "X-Bbox-South", "X-Bbox-East", "X-Bbox-North"],
 )
 
 app.include_router(analysis_router)
+app.include_router(landcover_map_router)
 app.include_router(municipalities_router)
 app.include_router(provenance_router)
 

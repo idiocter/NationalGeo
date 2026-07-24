@@ -323,7 +323,7 @@ class ChangeDetectionAgent:
             text(
                 """
                 UPDATE jobs
-                SET result = COALESCE(result, '{}'::jsonb) || :patch::jsonb
+                SET result = COALESCE(result, '{}'::jsonb) || CAST(:patch AS jsonb)
                 WHERE id = :job_id
                 """
             ),

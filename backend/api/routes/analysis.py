@@ -64,26 +64,25 @@ async def submit_analysis(
 
     # Create job record
     job_id = str(uuid4())
-    await db.execute(
-        text(
-            """
-            INSERT INTO jobs (id, municipality_id, years, requested_outputs,
-                              dataset_version, boundary_version, status)
-            VALUES (:id, :municipality_id, :years, :outputs, :dataset_version,
-                    :boundary_version, 'queued')
-            """
-        ),
-        {
-            "id": job_id,
-            "municipality_id": envelope.municipality_id,
-            "years": envelope.years,
-            "outputs": envelope.requested_outputs,
-            "dataset_version": envelope.dataset_version,
-            "boundary_version": envelope.boundary_version,
-        },
-    )
-
     try:
+        await db.execute(
+            text(
+                """
+                INSERT INTO jobs (id, municipality_id, years, requested_outputs,
+                                  dataset_version, boundary_version, status)
+                VALUES (:id, :municipality_id, :years, :outputs, :dataset_version,
+                        :boundary_version, 'queued')
+                """
+            ),
+            {
+                "id": job_id,
+                "municipality_id": envelope.municipality_id,
+                "years": envelope.years,
+                "outputs": envelope.requested_outputs,
+                "dataset_version": envelope.dataset_version,
+                "boundary_version": envelope.boundary_version,
+            },
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
