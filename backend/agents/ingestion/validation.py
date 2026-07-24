@@ -10,7 +10,7 @@ import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VALID_CLASS_CODES: frozenset[int] = frozenset(range(9))  # 0–8 per codebook
+VALID_CLASS_CODES: frozenset[int] = frozenset(range(12))  # 0–11 ICIMOD 11-class system
 
 
 @dataclass

@@ -1,5 +1,7 @@
 import asyncio
+import csv
 import hashlib
+import io
 import json
 from uuid import uuid4
 
@@ -149,4 +151,64 @@ async def stream_job(job_id: str) -> StreamingResponse:
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+@router.get("/jobs/{job_id}/report.csv")
+async def download_report_csv(job_id: str, db: AsyncSession = Depends(get_session)) -> StreamingResponse:
+    """Download a CSV report of land-cover statistics for a completed job."""
+    result = await db.execute(
+        text("SELECT municipality_id, result FROM jobs WHERE id = :id AND status IN ('complete', 'partial')"),
+        {"id": job_id},
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found or not yet complete")
+
+    job_result = row.result or {}
+    municipality_id = row.municipality_id
+    statistics: list[dict] = job_result.get("statistics", [])
+    change_matrices: list[dict] = job_result.get("change_matrix", [])
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+
+    # Section 1: per-year land-cover statistics
+    writer.writerow(["# Nepal Land Cover Statistics", f"Municipality: {municipality_id}"])
+    writer.writerow([])
+    writer.writerow(["Year", "Class Code", "Class Name", "Area km2", "Share %", "Pixels", "Pixel Area m2", "Nodata %"])
+    for stat in sorted(statistics, key=lambda s: s["year"]):
+        for cls in sorted(stat["classes"], key=lambda c: c["code"]):
+            writer.writerow([
+                stat["year"], cls["code"], cls["name"],
+                round(cls["area_km2"], 2), round(cls["share_pct"], 2),
+                cls["pixels"], stat.get("pixel_area_m2", ""),
+                round(stat.get("cloud_or_nodata_pct", 0), 2),
+            ])
+
+    if change_matrices:
+        writer.writerow([])
+        writer.writerow(["# Net Change Summary"])
+        writer.writerow(["From Year", "To Year", "Class Code", "Class Name", "Delta km2", "Delta %"])
+        for matrix in change_matrices:
+            for nc in matrix.get("net_change", []):
+                writer.writerow([
+                    matrix["from_year"], matrix["to_year"],
+                    nc["code"], nc["class_name"],
+                    round(nc["delta_km2"], 2), round(nc["delta_pct"], 2),
+                ])
+
+        writer.writerow([])
+        writer.writerow(["# CAGR (Compound Annual Growth Rate)"])
+        writer.writerow(["Class Code", "Class Name", "CAGR %/yr"])
+        for matrix in change_matrices[:1]:  # only first matrix has full series CAGR
+            for entry in matrix.get("cagr", []):
+                writer.writerow([entry["code"], entry["class_name"], round(entry["cagr_pct"], 4)])
+
+    buf.seek(0)
+    filename = f"nglip_{municipality_id}_{job_id[:8]}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

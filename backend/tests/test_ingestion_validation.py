@@ -187,7 +187,8 @@ class TestCheckClassCodes:
         assert "99" in errors[0]
 
     def test_multiple_unexpected_codes(self):
-        hist = {1: 100, 10: 5, 20: 3}
+        # Codes 12 and 20 are outside the 0–11 ICIMOD range → unexpected
+        hist = {1: 100, 12: 5, 20: 3}
         errors = check_class_codes(hist)
         assert len(errors) == 1
-        assert "10" in errors[0] and "20" in errors[0]
+        assert "12" in errors[0] and "20" in errors[0]

@@ -6,8 +6,9 @@ import { useParams, useRouter } from "next/navigation";
 import { AnalysisStream } from "@/components/AnalysisStream";
 import { ChangeChart } from "@/components/ChangeChart";
 import { EvidencePanel } from "@/components/EvidencePanel";
-import { ReportDownload } from "@/components/ReportDownload";
+import { NetChangeTable } from "@/components/NetChangeTable";
 import { StatisticsPanel } from "@/components/StatisticsPanel";
+import { TrendChart } from "@/components/TrendChart";
 import { api } from "@/lib/api";
 import { useJobStream } from "@/lib/sse";
 import {
@@ -15,7 +16,7 @@ import {
   DEFAULT_BOUNDARY_VERSION,
   DEFAULT_DATASET_VERSION,
 } from "@/lib/constants";
-import type { JobResult, LandCoverStatistics, Municipality } from "@/types/api";
+import type { ChangeMatrix, JobResult, LandCoverStatistics, Municipality } from "@/types/api";
 
 export default function MunicipalityPage() {
   const { id } = useParams<{ id: string }>();
@@ -61,13 +62,12 @@ export default function MunicipalityPage() {
     }
   }, [isDone, jobId, result]);
 
-  // Pick the stats to display — user-selected year or latest available
   const availableStats: LandCoverStatistics[] = result?.statistics ?? [];
   const availableYears = availableStats.map((s) => s.year).sort((a, b) => a - b);
   const displayYear = selectedYear ?? availableYears[availableYears.length - 1] ?? null;
   const displayStats = availableStats.find((s) => s.year === displayYear) ?? null;
 
-  const changeMatrix = result?.change_matrix?.[0] ?? null;
+  const changeMatrix: ChangeMatrix | null = result?.change_matrix?.[0] ?? null;
   const validation = result?.validation ?? null;
 
   const verdictColour =
@@ -102,6 +102,15 @@ export default function MunicipalityPage() {
             QA: {validation.verdict.toUpperCase()}
           </span>
         )}
+        {jobId && isDone && (
+          <a
+            href={api.analysis.reportCsvUrl(jobId)}
+            download
+            className="ml-2 text-xs bg-blue-600 text-white rounded px-3 py-1 hover:bg-blue-700 transition-colors"
+          >
+            Download CSV
+          </a>
+        )}
       </header>
 
       <div className="flex-1 overflow-hidden flex">
@@ -112,7 +121,6 @@ export default function MunicipalityPage() {
             </div>
           )}
 
-          {/* Progress stream — visible while running and after completion */}
           {jobId && (
             <section>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -122,34 +130,41 @@ export default function MunicipalityPage() {
             </section>
           )}
 
-          {/* Year selector */}
           {availableYears.length > 1 && (
             <section>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
-                Year
+                Year snapshot
               </label>
-              <select
-                value={displayYear ?? ""}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 bg-white"
-              >
+              <div className="flex gap-1 flex-wrap">
                 {availableYears.map((yr) => (
-                  <option key={yr} value={yr}>
+                  <button
+                    key={yr}
+                    onClick={() => setSelectedYear(yr)}
+                    className={`text-xs px-2 py-1 rounded border transition-colors ${
+                      yr === displayYear
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "border-gray-200 text-gray-600 hover:border-blue-300"
+                    }`}
+                  >
                     {yr}
-                  </option>
+                  </button>
                 ))}
-              </select>
+              </div>
             </section>
           )}
 
-          {/* Statistics table */}
           {displayStats && (
             <section>
               <StatisticsPanel stats={displayStats} />
             </section>
           )}
 
-          {/* Validation warnings */}
+          {changeMatrix && (
+            <section>
+              <NetChangeTable matrix={changeMatrix} />
+            </section>
+          )}
+
           {validation?.verdict === "warn" && (
             <section>
               <h3 className="text-xs font-semibold text-yellow-600 uppercase tracking-wide mb-2">
@@ -167,24 +182,23 @@ export default function MunicipalityPage() {
             </section>
           )}
 
-          {/* Evidence — Phase 3 */}
           {result?.evidence && result.evidence.length > 0 && (
             <section>
               <EvidencePanel evidence={result.evidence} />
             </section>
           )}
-
-          {/* Report download — Phase 4 */}
-          {result?.artefacts && (
-            <section>
-              <ReportDownload result={result} />
-            </section>
-          )}
         </aside>
 
-        {/* Main: trend chart */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {changeMatrix && (
+          {/* Multi-year trend line chart */}
+          {availableStats.length >= 2 && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              <TrendChart statistics={availableStats} />
+            </div>
+          )}
+
+          {/* Change matrix stacked area chart */}
+          {changeMatrix && changeMatrix.trend_series.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
               <ChangeChart change={changeMatrix} />
             </div>
@@ -196,9 +210,9 @@ export default function MunicipalityPage() {
             </div>
           )}
 
-          {result && !changeMatrix && (
+          {result && availableStats.length === 0 && (
             <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-              No change data available.
+              No statistics available.
             </div>
           )}
         </div>

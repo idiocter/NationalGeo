@@ -19,38 +19,50 @@ from pydantic import BaseModel, field_validator
 
 class LandCoverCode(IntEnum):
     NO_DATA = 0
-    FOREST = 1
-    AGRICULTURE = 2
-    WATER = 3
-    GRASSLAND = 4
-    OPEN_WOODLAND = 5
-    BUILT_UP = 6
-    BARREN = 7
-    SNOW = 8
+    WATER_BODY = 1
+    CULTIVATED_LAND = 2
+    SHRUBLAND = 3
+    FOREST = 4
+    GRASSLAND = 5
+    BARREN_LAND = 6
+    SNOW_ICE_GLACIER = 7
+    SETTLEMENT = 8
+    OPEN_WOODLAND = 9
+    ROCKY_BARE = 10
+    OTHERS = 11
 
 
+# ICIMOD Nepal 11-class Land Cover system (codes 1–11; 0 = nodata fill)
+# Source: ICIMOD Land Cover of Nepal series (2000–2020).
+# Class names should be verified against the dataset PDF.
 CLASS_NAMES: dict[int, str] = {
     0: "NoData",
-    1: "Forest",
-    2: "Agriculture",
-    3: "Water",
-    4: "Grassland",
-    5: "Open woodland",
-    6: "Built-up",
-    7: "Barren",
-    8: "Snow",
+    1: "Water Body",
+    2: "Cultivated Land",
+    3: "Shrubland",
+    4: "Forest",
+    5: "Grassland",
+    6: "Barren Land",
+    7: "Snow/Ice/Glacier",
+    8: "Settlement",
+    9: "Open Woodland",
+    10: "Rocky/Bare Ground",
+    11: "Others",
 }
 
 CLASS_COLOURS: dict[int, str] = {
     0: "#cccccc",
-    1: "#1a7a4a",
+    1: "#4a90d9",
     2: "#f5d44e",
-    3: "#3b89c9",
-    4: "#90d44b",
-    5: "#a8c97f",
-    6: "#d63b2f",
-    7: "#c4b28a",
-    8: "#f0f0f0",
+    3: "#a8c97f",
+    4: "#1a7a4a",
+    5: "#90d44b",
+    6: "#c4b28a",
+    7: "#e8f4f8",
+    8: "#d63b2f",
+    9: "#5da06f",
+    10: "#8b7355",
+    11: "#b0b0b0",
 }
 
 

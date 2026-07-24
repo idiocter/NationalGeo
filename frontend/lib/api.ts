@@ -32,6 +32,7 @@ export const api = {
         body: JSON.stringify(envelope),
       }),
     getJob: (jobId: string) => request<JobResult>(`/jobs/${jobId}`),
+    reportCsvUrl: (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.csv`,
   },
 
   provenance: {

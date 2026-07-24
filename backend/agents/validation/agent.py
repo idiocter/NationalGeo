@@ -277,6 +277,12 @@ def _check_matrix_rowsum(
 
 
 def _check_plausibility(statistics: list[LandCoverStatistics]) -> list[CheckResult]:
+    """Check that per-year area change rate is within plausible bounds.
+
+    Thresholds are applied to the *annualised* change rate so that multi-year
+    intervals (e.g. 5-year steps) are treated fairly against annual ones.
+    Annualised rate = (area_new / area_old)^(1/n_years) - 1 (CAGR form).
+    """
     if len(statistics) < 2:
         return []
 
@@ -286,35 +292,38 @@ def _check_plausibility(statistics: list[LandCoverStatistics]) -> list[CheckResu
     for i in range(1, len(sorted_stats)):
         prev = sorted_stats[i - 1]
         curr = sorted_stats[i]
+        n_years = max(curr.year - prev.year, 1)
         prev_by_code = {c.code: c.area_km2 for c in prev.classes}
 
         for cls in curr.classes:
             prev_area = prev_by_code.get(cls.code, 0.0)
             if prev_area <= 0:
                 continue
-            change_frac = abs(cls.area_km2 - prev_area) / prev_area
+            ratio = cls.area_km2 / prev_area
+            # Annualised rate (absolute): |ratio^(1/n) - 1|
+            annual_change = abs(ratio ** (1.0 / n_years) - 1.0)
             years_str = f"{prev.year}→{curr.year}"
-            if change_frac >= PLAUSIBILITY_BLOCK:
+            if annual_change >= PLAUSIBILITY_BLOCK:
                 results.append(
                     CheckResult(
                         id=f"plausibility:{curr.year}:{cls.code}",
                         status="block",
                         detail=(
-                            f"Class {cls.code} ({cls.name}) changed by "
-                            f"{change_frac*100:.0f}% between {years_str} "
+                            f"Class {cls.code} ({cls.name}): annualised change "
+                            f"{annual_change*100:.0f}%/yr between {years_str} "
                             f"({prev_area:.1f}→{cls.area_km2:.1f} km²) — "
-                            "exceeds 50% plausibility threshold"
+                            f"exceeds {PLAUSIBILITY_BLOCK*100:.0f}%/yr threshold"
                         ),
                     )
                 )
-            elif change_frac >= PLAUSIBILITY_WARN:
+            elif annual_change >= PLAUSIBILITY_WARN:
                 results.append(
                     CheckResult(
                         id=f"plausibility:{curr.year}:{cls.code}",
                         status="warn",
                         detail=(
-                            f"Class {cls.code} ({cls.name}) changed by "
-                            f"{change_frac*100:.0f}% between {years_str} "
+                            f"Class {cls.code} ({cls.name}): annualised change "
+                            f"{annual_change*100:.0f}%/yr between {years_str} "
                             f"({prev_area:.1f}→{cls.area_km2:.1f} km²)"
                         ),
                     )

@@ -35,7 +35,8 @@ yarn-error.log*
 data/rasters/
 data/boundaries/*.gpkg
 data/supporting/
-data/landcover/*.tif
+data/dataset/
+data/landcover/**/*.tif
 
 # Generated reports and maps (artefacts, not source)
 backend/tests/golden/*.tif

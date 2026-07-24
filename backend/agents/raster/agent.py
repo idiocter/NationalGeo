@@ -34,7 +34,7 @@ from backend.contracts.models import (
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-VALID_CLASS_CODES = frozenset(range(9))  # 0–8
+VALID_CLASS_CODES = frozenset(range(12))  # 0–11 ICIMOD 11-class system
 VERSION = "raster_analysis:v0.1.0"
 
 
