@@ -20,12 +20,12 @@ from pydantic import BaseModel, field_validator
 class LandCoverCode(IntEnum):
     NO_DATA = 0
     WATER_BODY = 1
-    CULTIVATED_LAND = 2
-    SHRUBLAND = 3
+    SNOW_ICE_GLACIER = 2
+    BARREN_LAND = 3
     FOREST = 4
     GRASSLAND = 5
-    BARREN_LAND = 6
-    SNOW_ICE_GLACIER = 7
+    SHRUBLAND = 6
+    CULTIVATED_LAND = 7
     SETTLEMENT = 8
     OPEN_WOODLAND = 9
     ROCKY_BARE = 10

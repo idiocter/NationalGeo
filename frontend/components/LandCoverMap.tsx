@@ -175,7 +175,7 @@ export function LandCoverMap({ municipality, year, availableYears, onYearChange,
                 .map(([code, name]) => ({ code: Number(code), name, share_pct: null }))
           ).map((entry) => {
             const code  = "code" in entry ? entry.code : Number((entry as [string, string])[0]);
-            const name  = "name" in entry ? entry.name : (entry as [string, string])[1];
+            const name  = CLASS_NAMES[code] ?? ("code" in entry ? entry.name : (entry as [string, string])[1]);
             const share = "share_pct" in entry ? (entry as { share_pct: number | null }).share_pct : null;
             const colour = CLASS_COLOURS[code] ?? "#cccccc";
             return (
