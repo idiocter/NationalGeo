@@ -236,7 +236,7 @@ export default function MunicipalityPage() {
                   year={displayYear ?? ANALYSIS_YEARS[ANALYSIS_YEARS.length - 1]}
                   availableYears={ANALYSIS_YEARS}
                   onYearChange={setSelectedYear}
-                  stats={displayStats}
+                  allStats={availableStats}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-300 text-sm">

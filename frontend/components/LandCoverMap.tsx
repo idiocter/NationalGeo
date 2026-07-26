@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { ImageSource, Map as MapLibreMap } from "maplibre-gl";
 import { CLASS_COLOURS, CLASS_NAMES } from "@/lib/constants";
 import { api } from "@/lib/api";
@@ -11,18 +11,20 @@ interface Props {
   year: number;
   availableYears: number[];
   onYearChange: (year: number) => void;
-  stats?: LandCoverStatistics | null;
+  allStats?: LandCoverStatistics[];
 }
 
 const SOURCE_ID = "landcover-img";
 const LAYER_ID  = "landcover-layer";
+const PLAY_INTERVAL_MS = 1600;
 
 function geomBbox(geom: GeoJSON.MultiPolygon | GeoJSON.Polygon | undefined) {
   if (!geom) return { west: 80, south: 26, east: 88, north: 30 };
   const lons: number[] = [];
   const lats: number[] = [];
-  const collect = (ring: number[][]) => ring.forEach(([lng, lat]) => { lons.push(lng); lats.push(lat); });
-  if (geom.type === "MultiPolygon") geom.coordinates.forEach((poly) => collect(poly[0]));
+  const collect = (ring: number[][]) =>
+    ring.forEach(([lng, lat]) => { lons.push(lng); lats.push(lat); });
+  if (geom.type === "MultiPolygon") geom.coordinates.forEach((p) => collect(p[0]));
   else collect(geom.coordinates[0]);
   return {
     west:  Math.min(...lons),
@@ -32,21 +34,24 @@ function geomBbox(geom: GeoJSON.MultiPolygon | GeoJSON.Polygon | undefined) {
   };
 }
 
-export function LandCoverMap({ municipality, year, availableYears, onYearChange, stats }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<MapLibreMap | null>(null);
-  const loadedRef    = useRef(false);
-  const yearRef      = useRef(year);
+export function LandCoverMap({
+  municipality, year, availableYears, onYearChange, allStats = [],
+}: Props) {
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const mapRef        = useRef<MapLibreMap | null>(null);
+  const loadedRef     = useRef(false);
+  const playTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const opacity = 1.0;
+  // Seek-bar index (0 … availableYears.length - 1)
+  const initIdx = Math.max(0, availableYears.indexOf(year));
+  const [yearIdx, setYearIdx]   = useState(initIdx);
+  const [loading, setLoading]   = useState(true);
+  const [playing, setPlaying]   = useState(false);
 
-  // Keep yearRef current so the load-callback can use latest year even if
-  // the prop changed while the async import was resolving.
-  useEffect(() => { yearRef.current = year; });
+  const currentYear = availableYears[yearIdx] ?? year;
+  const currentStats = allStats.find((s) => s.year === currentYear) ?? null;
 
   const bbox = geomBbox(municipality.geometry);
-  // MapLibre image-source coordinates: [NW, NE, SE, SW]
   const imgCoords: [[number,number],[number,number],[number,number],[number,number]] = [
     [bbox.west,  bbox.north],
     [bbox.east,  bbox.north],
@@ -54,7 +59,12 @@ export function LandCoverMap({ municipality, year, availableYears, onYearChange,
     [bbox.west,  bbox.south],
   ];
 
-  // Initialise map once — mirrors NepalMap pattern exactly
+  // Keep parent in sync whenever the internal year changes
+  useEffect(() => {
+    onYearChange(currentYear);
+  }, [currentYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Initialise MapLibre ──────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -80,7 +90,7 @@ export function LandCoverMap({ municipality, year, availableYears, onYearChange,
           },
           layers: [
             { id: "background", type: "background" as const, paint: { "background-color": "#f8f9fa" } },
-            { id: "basemap", type: "raster" as const, source: "carto-positron" },
+            { id: "basemap",    type: "raster" as const, source: "carto-positron" },
           ],
         },
         center: [(bbox.west + bbox.east) / 2, (bbox.south + bbox.north) / 2],
@@ -93,24 +103,22 @@ export function LandCoverMap({ municipality, year, availableYears, onYearChange,
       map.on("load", () => {
         loadedRef.current = true;
 
-        // Land-cover PNG first so boundary stroke renders on top
-        const url = api.municipalities.landcoverPngUrl(municipality.id, yearRef.current);
+        const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
         map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
         map.addLayer({
-          id:     LAYER_ID,
-          type:   "raster",
-          source: SOURCE_ID,
-          paint:  { "raster-opacity": opacity },
+          id: LAYER_ID, type: "raster", source: SOURCE_ID,
+          paint: { "raster-opacity": 1.0 },
         });
 
-        // Municipality boundary outline on top
         if (municipality.geometry) {
           map.addSource("boundary", {
             type: "geojson",
             data: { type: "Feature", geometry: municipality.geometry as GeoJSON.Geometry, properties: {} },
           });
-          map.addLayer({ id: "boundary-line", type: "line", source: "boundary",
-            paint: { "line-color": "#1e293b", "line-width": 2 } });
+          map.addLayer({
+            id: "boundary-line", type: "line", source: "boundary",
+            paint: { "line-color": "#1e293b", "line-width": 2 },
+          });
         }
 
         map.fitBounds(
@@ -125,87 +133,198 @@ export function LandCoverMap({ municipality, year, availableYears, onYearChange,
     });
 
     return () => {
+      if (playTimerRef.current) clearInterval(playTimerRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
       loadedRef.current = false;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Swap overlay when year changes
+  // ── Swap land-cover overlay when year changes ────────────────────────────
   useEffect(() => {
     if (!loadedRef.current || !mapRef.current) return;
     const src = mapRef.current.getSource(SOURCE_ID) as ImageSource | undefined;
     if (!src) return;
     setLoading(true);
     src.updateImage({
-      url: api.municipalities.landcoverPngUrl(municipality.id, year),
+      url: api.municipalities.landcoverPngUrl(municipality.id, currentYear),
       coordinates: imgCoords,
     });
-  }, [year]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Auto-play ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!playing) {
+      if (playTimerRef.current) clearInterval(playTimerRef.current);
+      return;
+    }
+    playTimerRef.current = setInterval(() => {
+      setYearIdx((prev) => (prev + 1) % availableYears.length);
+    }, PLAY_INTERVAL_MS);
+    return () => {
+      if (playTimerRef.current) clearInterval(playTimerRef.current);
+    };
+  }, [playing, availableYears.length]);
+
+  const handleSlider = useCallback((idx: number) => {
+    setYearIdx(idx);
+    if (playing) setPlaying(false); // pause when user manually scrubs
+  }, [playing]);
+
+  // Slider track fill percentage
+  const pct = availableYears.length > 1
+    ? (yearIdx / (availableYears.length - 1)) * 100
+    : 0;
+
+  // Legend entries for current year
+  const legendEntries = currentStats
+    ? [...currentStats.classes].sort((a, b) => b.area_km2 - a.area_km2)
+    : Object.entries(CLASS_NAMES)
+        .filter(([c]) => c !== "0")
+        .map(([code, name]) => ({ code: Number(code), name, share_pct: null as number | null }));
 
   return (
-    // w-full h-full — fills whatever the parent gives us, exactly like NepalMap
-    <div className="w-full h-full relative">
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="w-full h-full relative flex flex-col">
+      {/* Map fills remaining space */}
+      <div className="flex-1 min-h-0 relative">
+        <div ref={containerRef} className="w-full h-full" />
 
-      {/* Toolbar overlay — top of map */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-3 px-4 py-2
-                      bg-white/90 backdrop-blur-sm border-b border-gray-100 flex-wrap">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Year</span>
-        <div className="flex gap-1">
-          {availableYears.map((yr) => (
-            <button
-              key={yr}
-              onClick={() => onYearChange(yr)}
-              className={`text-xs px-2.5 py-1 rounded border transition-colors ${
-                yr === year
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "border-gray-200 text-gray-600 hover:border-blue-300"
-              }`}
-            >
-              {yr}
-            </button>
-          ))}
-        </div>
-        {loading && <span className="text-xs text-gray-400 animate-pulse ml-auto">Loading…</span>}
-      </div>
-
-      {/* Legend — bottom-right, built from actual data when available */}
-      <div className="absolute bottom-8 right-2 z-10 bg-white/95 backdrop-blur-sm
-                      rounded-lg shadow border border-gray-200 p-3 max-h-64 overflow-y-auto min-w-[160px]">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Land Cover{stats ? ` · ${year}` : ""}
-        </p>
-        <div className="space-y-1.5">
-          {(stats
-            ? [...stats.classes].sort((a, b) => b.area_km2 - a.area_km2)
-            : Object.entries(CLASS_NAMES)
-                .filter(([code]) => code !== "0")
-                .map(([code, name]) => ({ code: Number(code), name, share_pct: null }))
-          ).map((entry) => {
-            const code  = "code" in entry ? entry.code : Number((entry as [string, string])[0]);
-            const name  = CLASS_NAMES[code] ?? ("code" in entry ? entry.name : (entry as [string, string])[1]);
-            const share = "share_pct" in entry ? (entry as { share_pct: number | null }).share_pct : null;
-            const colour = CLASS_COLOURS[code] ?? "#cccccc";
-            return (
-              <div key={code} className="flex items-center gap-2">
-                <span
-                  className="inline-block w-3.5 h-3.5 rounded-sm shrink-0 border border-gray-300/60"
-                  style={{ backgroundColor: colour }}
-                />
-                <span className="text-xs text-gray-700 leading-tight flex-1">{name}</span>
-                {share !== null && (
-                  <span className="text-xs text-gray-400 tabular-nums">{share.toFixed(1)}%</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {!stats && (
-          <p className="text-xs text-gray-400 mt-2 italic">Run analysis to see coverage</p>
+        {/* Loading pulse overlay */}
+        {loading && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20
+                          bg-white/90 backdrop-blur-sm rounded-full px-3 py-1
+                          text-xs text-blue-600 shadow flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            Loading {currentYear}…
+          </div>
         )}
+
+        {/* Legend — bottom-right above seek bar */}
+        <div className="absolute bottom-2 right-2 z-10 bg-white/95 backdrop-blur-sm
+                        rounded-lg shadow border border-gray-200 p-2.5
+                        max-h-52 overflow-y-auto min-w-[150px]">
+          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            Land Cover · <span className="text-blue-600">{currentYear}</span>
+          </p>
+          <div className="space-y-1">
+            {legendEntries.map((entry) => {
+              const code   = "code" in entry ? entry.code : Number((entry as [string,string])[0]);
+              const name   = CLASS_NAMES[code] ?? ("code" in entry ? (entry as {name:string}).name : "");
+              const share  = "share_pct" in entry ? (entry as {share_pct:number|null}).share_pct : null;
+              const colour = CLASS_COLOURS[code] ?? "#cccccc";
+              return (
+                <div key={code} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-3 h-3 rounded-sm shrink-0 border border-gray-300/60"
+                    style={{ backgroundColor: colour }}
+                  />
+                  <span className="text-[10px] text-gray-700 leading-tight flex-1 truncate">{name}</span>
+                  {share !== null && (
+                    <span className="text-[10px] text-gray-400 tabular-nums">{share.toFixed(1)}%</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {!currentStats && (
+            <p className="text-[10px] text-gray-400 mt-1.5 italic">Run analysis for live data</p>
+          )}
+        </div>
       </div>
+
+      {/* ── Timeline seek bar ─────────────────────────────────────────────── */}
+      <div className="shrink-0 bg-white border-t border-gray-100 px-4 pt-2.5 pb-3 z-10">
+        <div className="flex items-center gap-3">
+          {/* Play / Pause button */}
+          <button
+            onClick={() => setPlaying((p) => !p)}
+            aria-label={playing ? "Pause" : "Play"}
+            className="shrink-0 w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700
+                       text-white flex items-center justify-center transition-colors shadow-sm"
+          >
+            {playing ? (
+              /* Pause icon */
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
+                <rect x="3" y="2" width="3.5" height="12" rx="1"/>
+                <rect x="9.5" y="2" width="3.5" height="12" rx="1"/>
+              </svg>
+            ) : (
+              /* Play icon */
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
+                <path d="M4 2.5l9 5.5-9 5.5V2.5z"/>
+              </svg>
+            )}
+          </button>
+
+          {/* Slider + tick marks */}
+          <div className="flex-1 flex flex-col gap-1">
+            {/* Current year badge */}
+            <div className="flex justify-between items-center mb-0.5">
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">
+                Land cover timeline
+              </span>
+              <span className="text-xs font-bold text-blue-600">{currentYear}</span>
+            </div>
+
+            {/* Range input */}
+            <div className="relative">
+              <input
+                type="range"
+                min={0}
+                max={availableYears.length - 1}
+                step={1}
+                value={yearIdx}
+                onChange={(e) => handleSlider(Number(e.target.value))}
+                className="w-full h-1.5 rounded-full outline-none cursor-pointer appearance-none"
+                style={{
+                  background: `linear-gradient(to right, #2563eb ${pct}%, #e5e7eb ${pct}%)`,
+                  accentColor: "#2563eb",
+                }}
+              />
+              {/* Tick marks */}
+              <div className="flex justify-between px-0 mt-1">
+                {availableYears.map((yr, i) => (
+                  <button
+                    key={yr}
+                    onClick={() => handleSlider(i)}
+                    className={`text-[10px] tabular-nums transition-colors leading-none
+                                ${i === yearIdx
+                                  ? "text-blue-600 font-bold"
+                                  : "text-gray-400 hover:text-gray-600"}`}
+                  >
+                    {yr}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Slider thumb style — injected once */}
+      <style>{`
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 16px; height: 16px;
+          border-radius: 50%;
+          background: #2563eb;
+          border: 2px solid #fff;
+          box-shadow: 0 1px 4px rgba(0,0,0,.25);
+          cursor: pointer;
+          transition: transform .1s;
+        }
+        input[type="range"]::-webkit-slider-thumb:active {
+          transform: scale(1.2);
+        }
+        input[type="range"]::-moz-range-thumb {
+          width: 16px; height: 16px;
+          border-radius: 50%;
+          background: #2563eb;
+          border: 2px solid #fff;
+          box-shadow: 0 1px 4px rgba(0,0,0,.25);
+          cursor: pointer;
+        }
+      `}</style>
     </div>
   );
 }
