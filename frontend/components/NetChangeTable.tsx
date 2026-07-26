@@ -10,75 +10,80 @@ interface Props {
 export function NetChangeTable({ matrix }: Props) {
   if (!matrix.net_change.length) return null;
 
-  const sorted = [...matrix.net_change].sort((a, b) => b.delta_km2 - a.delta_km2);
+  const entries = [...matrix.net_change]
+    .filter((n) => Math.abs(n.delta_km2) > 0.01)
+    .sort((a, b) => b.delta_km2 - a.delta_km2);
+
+  const maxAbs = Math.max(...entries.map((n) => Math.abs(n.delta_km2)), 1);
 
   return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-gray-700">
-        Net change — {matrix.from_year}→{matrix.to_year}
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        What changed · {matrix.from_year}–{matrix.to_year}
       </h3>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-gray-400 border-b border-gray-100">
-            <th className="text-left pb-1 font-medium">Class</th>
-            <th className="text-right pb-1 font-medium">Δ km²</th>
-            <th className="text-right pb-1 font-medium">Δ %</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((nc) => {
-            const isGain = nc.delta_km2 > 0;
-            const colour = isGain ? "text-green-700" : "text-red-600";
-            const bgColour = isGain ? "bg-green-50" : "bg-red-50";
-            const classColour = CLASS_COLOURS[nc.code] ?? "#ccc";
-            const name = CLASS_NAMES[nc.code] ?? nc.class_name;
-            return (
-              <tr key={nc.code} className="border-b border-gray-50">
-                <td className="py-1 flex items-center gap-2">
-                  <span
-                    className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                    style={{ backgroundColor: classColour }}
-                  />
-                  {name}
-                </td>
-                <td className={`text-right py-1 tabular-nums font-medium ${colour}`}>
-                  {isGain ? "+" : ""}{nc.delta_km2.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
-                <td className={`text-right py-1 tabular-nums rounded px-1 ${colour} ${bgColour}`}>
-                  {isGain ? "+" : ""}{nc.delta_pct.toFixed(1)}%
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+
+      <div className="space-y-2">
+        {entries.map((nc) => {
+          const isGain   = nc.delta_km2 > 0;
+          const name     = CLASS_NAMES[nc.code] ?? nc.class_name;
+          const colour   = CLASS_COLOURS[nc.code] ?? "#ccc";
+          const barW     = (Math.abs(nc.delta_km2) / maxAbs) * 100;
+          const sign     = isGain ? "+" : "−";
+          const textCls  = isGain ? "text-emerald-700" : "text-red-600";
+          const barColor = isGain ? "#10b981" : "#ef4444";
+
+          return (
+            <div key={nc.code}>
+              <div className="flex items-center justify-between mb-0.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: colour }} />
+                  <span className="text-xs text-gray-700 truncate">{name}</span>
+                </div>
+                <span className={`text-xs tabular-nums font-medium shrink-0 ml-2 ${textCls}`}>
+                  {sign}{Math.abs(nc.delta_km2).toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+                  <span className="text-gray-400 font-normal ml-1">
+                    ({sign}{Math.abs(nc.delta_pct).toFixed(1)}%)
+                  </span>
+                </span>
+              </div>
+              {/* Bar — grows from centre */}
+              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${barW}%`, backgroundColor: barColor, opacity: 0.75,
+                           marginLeft: isGain ? 0 : `${100 - barW}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* CAGR — always visible, collapsed into compact rows */}
       {matrix.cagr && matrix.cagr.length > 0 && (
-        <details className="mt-2">
-          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
-            CAGR by class
-          </summary>
-          <table className="w-full text-xs mt-1">
-            <thead>
-              <tr className="text-gray-400 border-b border-gray-100">
-                <th className="text-left pb-1 font-medium">Class</th>
-                <th className="text-right pb-1 font-medium">CAGR %/yr</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.cagr.map((entry) => {
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+            Annual growth rate (CAGR)
+          </p>
+          <div className="space-y-0.5">
+            {matrix.cagr
+              .filter((e) => Math.abs(e.cagr_pct) > 0.01)
+              .sort((a, b) => Math.abs(b.cagr_pct) - Math.abs(a.cagr_pct))
+              .map((entry) => {
                 const isPos = entry.cagr_pct > 0;
                 return (
-                  <tr key={entry.code} className="border-b border-gray-50">
-                    <td className="py-0.5">{CLASS_NAMES[entry.code] ?? entry.class_name}</td>
-                    <td className={`text-right tabular-nums ${isPos ? "text-green-700" : "text-red-600"}`}>
+                  <div key={entry.code} className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500 truncate">
+                      {CLASS_NAMES[entry.code] ?? entry.class_name}
+                    </span>
+                    <span className={`text-xs tabular-nums ${isPos ? "text-emerald-600" : "text-red-500"}`}>
                       {isPos ? "+" : ""}{entry.cagr_pct.toFixed(2)}%/yr
-                    </td>
-                  </tr>
+                    </span>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </details>
+          </div>
+        </div>
       )}
     </div>
   );

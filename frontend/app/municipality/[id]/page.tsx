@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import { useJobStream } from "@/lib/sse";
 import {
   ANALYSIS_YEARS,
+  CLASS_NAMES,
   DEFAULT_BOUNDARY_VERSION,
   DEFAULT_DATASET_VERSION,
 } from "@/lib/constants";
@@ -249,6 +250,58 @@ export default function MunicipalityPage() {
           {/* Charts tab */}
           {activeTab === "charts" && (
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* KPI summary row */}
+              {displayStats && (
+                <div className="grid grid-cols-3 gap-3">
+                  {(() => {
+                    const top = [...displayStats.classes]
+                      .filter((c) => c.code !== 0)
+                      .sort((a, b) => b.area_km2 - a.area_km2)[0];
+                    const totalKm2 = displayStats.classes
+                      .filter((c) => c.code !== 0)
+                      .reduce((s, c) => s + c.area_km2, 0);
+                    const biggestNetChange = changeMatrix
+                      ? [...changeMatrix.net_change]
+                          .filter((n) => Math.abs(n.delta_km2) > 0.01)
+                          .sort((a, b) => Math.abs(b.delta_km2) - Math.abs(a.delta_km2))[0]
+                      : null;
+                    return (
+                      <>
+                        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Total area</p>
+                          <p className="text-xl font-bold text-gray-900 tabular-nums">
+                            {totalKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            <span className="text-sm font-normal text-gray-400 ml-1">km²</span>
+                          </p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{displayYear}</p>
+                        </div>
+                        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Dominant type</p>
+                          <p className="text-sm font-bold text-gray-900 leading-tight">{top ? (CLASS_NAMES[top.code] ?? top.name) : "—"}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{top ? `${top.share_pct.toFixed(1)}% of total` : ""}</p>
+                        </div>
+                        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Biggest change</p>
+                          {biggestNetChange ? (
+                            <>
+                              <p className={`text-sm font-bold leading-tight ${biggestNetChange.delta_km2 > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                                {biggestNetChange.delta_km2 > 0 ? "+" : ""}
+                                {biggestNetChange.delta_km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+                              </p>
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                {CLASS_NAMES[biggestNetChange.code] ?? biggestNetChange.class_name} · {changeMatrix!.from_year}–{changeMatrix!.to_year}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-gray-300">—</p>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
               {availableStats.length >= 2 && (
                 <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
                   <TrendChart statistics={availableStats} />
@@ -262,13 +315,13 @@ export default function MunicipalityPage() {
               )}
 
               {!result && !submitError && (
-                <div className="flex items-center justify-center h-full text-gray-300 text-sm">
+                <div className="flex items-center justify-center h-40 text-gray-300 text-sm">
                   Analysis running…
                 </div>
               )}
 
               {result && availableStats.length === 0 && (
-                <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
                   No statistics available.
                 </div>
               )}
