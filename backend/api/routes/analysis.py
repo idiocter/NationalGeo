@@ -233,45 +233,86 @@ async def download_report_csv(job_id: str, db: AsyncSession = Depends(get_sessio
     )
 
 
+async def _resolve_job_for_report(job_id: str, db: AsyncSession) -> tuple[str, dict]:
+    """Return (municipality_name, result_dict) for a completed job.
+
+    Looks up the jobs table first; falls back to result_cache so that
+    cache-hit job IDs (which may reference old jobs whose files are gone)
+    still resolve correctly.
+    """
+    row = (await db.execute(
+        text("""
+            SELECT m.name AS municipality_name, j.result
+            FROM jobs j
+            JOIN municipalities m ON m.id = j.municipality_id
+            WHERE j.id = :id AND j.status IN ('complete', 'partial')
+        """),
+        {"id": job_id},
+    )).mappings().first()
+
+    if row is None:
+        # Fall back to result_cache (job_id may come from the cache record)
+        row = (await db.execute(
+            text("""
+                SELECT m.name AS municipality_name, rc.result
+                FROM result_cache rc
+                JOIN municipalities m ON m.id = (rc.result->>'municipality_id')
+                WHERE rc.job_id = :id
+            """),
+            {"id": job_id},
+        )).mappings().first()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found or not yet complete")
+
+    return row["municipality_name"] or job_id[:8], row["result"] or {}
+
+
 @router.get("/jobs/{job_id}/report.pdf")
 async def download_report_pdf(job_id: str, db: AsyncSession = Depends(get_session)) -> FileResponse:
-    """Download PDF report for a completed job."""
-    result = await db.execute(
-        text("SELECT id FROM jobs WHERE id = :id AND status IN ('complete', 'partial')"),
-        {"id": job_id},
-    )
-    if result.first() is None:
-        raise HTTPException(status_code=404, detail="Job not found or not yet complete")
+    """Download PDF report for a completed job.
+
+    If the file was not generated during the original pipeline run (e.g. the
+    job is a cache hit from before the report agent was introduced), it is
+    generated on-demand the first time this endpoint is called.
+    """
+    municipality_name, job_result = await _resolve_job_for_report(job_id, db)
 
     pdf_path = Path(settings.object_store_path) / "reports" / job_id / "report.pdf"
     if not pdf_path.exists():
-        raise HTTPException(status_code=404, detail="PDF report not yet generated. Ensure 'report' is in requested_outputs.")
+        from backend.agents.report.agent import generate_pdf  # noqa: PLC0415
+        try:
+            generate_pdf(job_id, municipality_name, job_result, pdf_path)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}") from exc
 
     return FileResponse(
         str(pdf_path),
         media_type="application/pdf",
-        filename=f"nglip_{job_id[:8]}.pdf",
+        filename=f"nglip_{municipality_name.replace(' ', '_')}_{job_id[:8]}.pdf",
     )
 
 
 @router.get("/jobs/{job_id}/report.xlsx")
 async def download_report_xlsx(job_id: str, db: AsyncSession = Depends(get_session)) -> FileResponse:
-    """Download XLSX report for a completed job."""
-    result = await db.execute(
-        text("SELECT id FROM jobs WHERE id = :id AND status IN ('complete', 'partial')"),
-        {"id": job_id},
-    )
-    if result.first() is None:
-        raise HTTPException(status_code=404, detail="Job not found or not yet complete")
+    """Download XLSX report for a completed job.
+
+    Generated on-demand if the file does not exist on disk.
+    """
+    municipality_name, job_result = await _resolve_job_for_report(job_id, db)
 
     xlsx_path = Path(settings.object_store_path) / "reports" / job_id / "report.xlsx"
     if not xlsx_path.exists():
-        raise HTTPException(status_code=404, detail="XLSX report not yet generated.")
+        from backend.agents.report.agent import generate_xlsx  # noqa: PLC0415
+        try:
+            generate_xlsx(job_id, municipality_name, job_result, xlsx_path)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"XLSX generation failed: {exc}") from exc
 
     return FileResponse(
         str(xlsx_path),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=f"nglip_{job_id[:8]}.xlsx",
+        filename=f"nglip_{municipality_name.replace(' ', '_')}_{job_id[:8]}.xlsx",
     )
 
 
