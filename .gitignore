@@ -65,3 +65,4 @@ infra/models/*.joblib
 # Logs
 *.log
 celery_logs/
+reports 
