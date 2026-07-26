@@ -89,8 +89,8 @@ class EvidenceAgent:
         out: dict[str, bool] = {}
         for _, ds_key in _SUPPORTING_DATASETS:
             row = self.db.execute(
-                text("SELECT 1 FROM datasets WHERE name = :n LIMIT 1"),
-                {"n": ds_key},
+                text("SELECT 1 FROM datasets WHERE version = :v LIMIT 1"),
+                {"v": ds_key},
             ).first()
             out[ds_key] = row is not None
         return out
