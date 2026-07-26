@@ -65,13 +65,23 @@ export function LandCoverMap({ municipality, year, availableYears, onYearChange,
         container: containerRef.current,
         style: {
           version: 8,
-          sources: {},
-          // Plain white canvas — no basemap tiles, municipality only
-          layers: [{
-            id: "background",
-            type: "background",
-            paint: { "background-color": "#ffffff" },
-          }],
+          sources: {
+            "carto-positron": {
+              type: "raster" as const,
+              tiles: [
+                "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+                "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+                "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+                "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
+              ],
+              tileSize: 256,
+              attribution: "© CARTO © OpenStreetMap contributors",
+            },
+          },
+          layers: [
+            { id: "background", type: "background" as const, paint: { "background-color": "#f8f9fa" } },
+            { id: "basemap", type: "raster" as const, source: "carto-positron" },
+          ],
         },
         center: [(bbox.west + bbox.east) / 2, (bbox.south + bbox.north) / 2],
         zoom: 9,
