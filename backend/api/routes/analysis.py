@@ -3,11 +3,12 @@ import csv
 import hashlib
 import io
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -230,3 +231,69 @@ async def download_report_csv(job_id: str, db: AsyncSession = Depends(get_sessio
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/jobs/{job_id}/report.pdf")
+async def download_report_pdf(job_id: str, db: AsyncSession = Depends(get_session)) -> FileResponse:
+    """Download PDF report for a completed job."""
+    result = await db.execute(
+        text("SELECT id FROM jobs WHERE id = :id AND status IN ('complete', 'partial')"),
+        {"id": job_id},
+    )
+    if result.first() is None:
+        raise HTTPException(status_code=404, detail="Job not found or not yet complete")
+
+    pdf_path = Path(settings.object_store_path) / "reports" / job_id / "report.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="PDF report not yet generated. Ensure 'report' is in requested_outputs.")
+
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        filename=f"nglip_{job_id[:8]}.pdf",
+    )
+
+
+@router.get("/jobs/{job_id}/report.xlsx")
+async def download_report_xlsx(job_id: str, db: AsyncSession = Depends(get_session)) -> FileResponse:
+    """Download XLSX report for a completed job."""
+    result = await db.execute(
+        text("SELECT id FROM jobs WHERE id = :id AND status IN ('complete', 'partial')"),
+        {"id": job_id},
+    )
+    if result.first() is None:
+        raise HTTPException(status_code=404, detail="Job not found or not yet complete")
+
+    xlsx_path = Path(settings.object_store_path) / "reports" / job_id / "report.xlsx"
+    if not xlsx_path.exists():
+        raise HTTPException(status_code=404, detail="XLSX report not yet generated.")
+
+    return FileResponse(
+        str(xlsx_path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"nglip_{job_id[:8]}.xlsx",
+    )
+
+
+@router.get("/jobs/{job_id}/maps/{filename}")
+async def serve_map_file(
+    job_id: str, filename: str, db: AsyncSession = Depends(get_session)
+) -> FileResponse:
+    """Serve a generated map PNG (comparison_map.png, change_map.png)."""
+    result = await db.execute(
+        text("SELECT id FROM jobs WHERE id = :id"),
+        {"id": job_id},
+    )
+    if result.first() is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Restrict to known safe filenames
+    allowed = {"comparison_map.png", "change_map.png"}
+    if filename not in allowed:
+        raise HTTPException(status_code=400, detail=f"Unknown map file '{filename}'")
+
+    map_path = Path(settings.object_store_path) / "reports" / job_id / filename
+    if not map_path.exists():
+        raise HTTPException(status_code=404, detail="Map not yet generated")
+
+    return FileResponse(str(map_path), media_type="image/png")
