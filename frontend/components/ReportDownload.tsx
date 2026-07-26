@@ -7,10 +7,8 @@ interface Props {
 }
 
 const FORMATS = [
-  { key: "pdf", label: "PDF Report", icon: "📄", description: "Print-ready A4, maps included" },
-  { key: "docx", label: "Word Document", icon: "📝", description: "Editable tables and narrative" },
-  { key: "xlsx", label: "Excel Data", icon: "📊", description: "Raw numbers for analysis" },
-  { key: "map_bundle", label: "Map Bundle", icon: "🗺️", description: "PNG + SVG + time-lapse" },
+  { key: "pdf",  label: "PDF Report",    icon: "📄", description: "Print-ready A4, maps included" },
+  { key: "xlsx", label: "Excel Data",    icon: "📊", description: "Raw numbers for analysis" },
 ] as const;
 
 export function ReportDownload({ result }: Props) {

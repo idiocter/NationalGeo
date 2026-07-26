@@ -8,6 +8,7 @@ import { ChangeChart } from "@/components/ChangeChart";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { LandCoverMap } from "@/components/LandCoverMap";
 import { NetChangeTable } from "@/components/NetChangeTable";
+import { ReportDownload } from "@/components/ReportDownload";
 import { StatisticsPanel } from "@/components/StatisticsPanel";
 import { TrendChart } from "@/components/TrendChart";
 import { api } from "@/lib/api";
@@ -45,7 +46,7 @@ export default function MunicipalityPage() {
       .submit({
         municipality_id: id,
         years: ANALYSIS_YEARS,
-        requested_outputs: ["stats", "change"],
+        requested_outputs: ["stats", "change", "maps", "report"],
         dataset_version: DEFAULT_DATASET_VERSION,
         boundary_version: DEFAULT_BOUNDARY_VERSION,
       })
@@ -192,6 +193,18 @@ export default function MunicipalityPage() {
           {result?.evidence && result.evidence.length > 0 && (
             <section>
               <EvidencePanel evidence={result.evidence} />
+            </section>
+          )}
+
+          {result && jobId && isDone && (
+            <section>
+              <ReportDownload result={{
+                ...result,
+                artefacts: {
+                  pdf:  result.artefacts?.pdf  ?? { url: api.analysis.reportPdfUrl(jobId) },
+                  xlsx: result.artefacts?.xlsx ?? { url: api.analysis.reportXlsxUrl(jobId) },
+                },
+              }} />
             </section>
           )}
         </aside>

@@ -1,4 +1,5 @@
 import type {
+  DashboardStats,
   JobEnvelope,
   JobResult,
   Municipality,
@@ -34,7 +35,13 @@ export const api = {
         body: JSON.stringify(envelope),
       }),
     getJob: (jobId: string) => request<JobResult>(`/jobs/${jobId}`),
-    reportCsvUrl: (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.csv`,
+    reportCsvUrl:  (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.csv`,
+    reportPdfUrl:  (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.pdf`,
+    reportXlsxUrl: (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.xlsx`,
+  },
+
+  dashboard: {
+    get: () => request<DashboardStats>("/dashboard"),
   },
 
   provenance: {
@@ -42,5 +49,14 @@ export const api = {
       request<object>(`/provenance/figure/${figureId}`),
     getManifest: (jobId: string) =>
       request<object>(`/provenance/jobs/${jobId}/manifest`),
+  },
+
+  auth: {
+    login: (username: string, password: string) =>
+      request<{ access_token: string; token_type: string }>("/auth/token", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      }),
+    whoami: () => request<{ authenticated: boolean; username?: string }>("/auth/me"),
   },
 };

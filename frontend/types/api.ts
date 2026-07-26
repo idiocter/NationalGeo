@@ -139,3 +139,26 @@ export interface StageEvent {
   pct: number;
   eta_s?: number;
 }
+
+export interface ProvinceStats {
+  province: string;
+  analyzed: number;
+  total: number;
+}
+
+export interface RecentJob {
+  job_id: string;
+  municipality_name: string;
+  status: string;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface DashboardStats {
+  total_municipalities: number;
+  analyzed_count: number;
+  coverage_pct: number;
+  provinces: ProvinceStats[];
+  recent_jobs: RecentJob[];
+  job_counts: Record<string, number>;
+}

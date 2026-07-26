@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api.routes.analysis import router as analysis_router
+from backend.api.routes.auth import router as auth_router
+from backend.api.routes.dashboard import router as dashboard_router
+from backend.api.routes.health import router as health_router
 from backend.api.routes.landcover_map import router as landcover_map_router
 from backend.api.routes.municipalities import router as municipalities_router
 from backend.api.routes.provenance import router as provenance_router
@@ -36,6 +39,9 @@ app.add_middleware(
 )
 
 app.include_router(analysis_router)
+app.include_router(auth_router)
+app.include_router(dashboard_router)
+app.include_router(health_router)
 app.include_router(landcover_map_router)
 app.include_router(municipalities_router)
 app.include_router(provenance_router)
@@ -47,8 +53,3 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         status_code=500,
         content={"detail": "Internal server error", "type": type(exc).__name__},
     )
-
-
-@app.get("/health")
-async def health() -> dict:
-    return {"status": "ok", "version": "0.1.0"}

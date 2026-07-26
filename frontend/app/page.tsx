@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { NepalMap } from "@/components/NepalMap";
 import { api } from "@/lib/api";
-import type { Municipality } from "@/types/api";
+import type { DashboardStats, Municipality } from "@/types/api";
 
 const MAX_RESULTS = 8;
 
@@ -25,6 +25,7 @@ export default function HomePage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardStats | null>(null);
 
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -40,6 +41,7 @@ export default function HomePage() {
       .then(setMunicipalities)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+    api.dashboard.get().then(setDashboard).catch(() => {});
   }, []);
 
   // Close dropdown when clicking outside the search widget
@@ -166,8 +168,29 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg shadow px-3 py-2 text-xs text-gray-600">
-          Search or click any municipality to analyse land cover 2000–2020
+        {/* Dashboard stats overlay — bottom left */}
+        <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-10">
+          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow px-3 py-2 text-xs text-gray-600">
+            Search or click any municipality to analyse land cover 2000–2020
+          </div>
+          {dashboard && (
+            <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow border border-gray-100 px-3 py-2 text-xs">
+              <div className="flex gap-4">
+                <div className="text-center">
+                  <div className="text-lg font-bold text-blue-600">{dashboard.analyzed_count}</div>
+                  <div className="text-gray-500">Analysed</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-bold text-gray-700">{dashboard.total_municipalities}</div>
+                  <div className="text-gray-500">Total</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-bold text-green-600">{dashboard.coverage_pct}%</div>
+                  <div className="text-gray-500">Coverage</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
