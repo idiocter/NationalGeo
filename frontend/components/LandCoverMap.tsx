@@ -192,16 +192,16 @@ export function LandCoverMap({
         {/* Loading pulse overlay */}
         {loading && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20
-                          bg-white/90 backdrop-blur-sm rounded-full px-3 py-1
-                          text-xs text-blue-600 shadow flex items-center gap-1.5">
+                          bg-white rounded-full px-3 py-1 border border-gray-200
+                          text-xs text-blue-600 shadow-sm flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
             Loading {currentYear}…
           </div>
         )}
 
         {/* Legend — bottom-right above seek bar */}
-        <div className="absolute bottom-2 right-2 z-10 bg-white/95 backdrop-blur-sm
-                        rounded-lg shadow border border-gray-200 p-2.5
+        <div className="absolute bottom-2 right-2 z-10 bg-white
+                        rounded-xl shadow-md border border-gray-200 p-2.5
                         max-h-52 overflow-y-auto min-w-[150px]">
           <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
             Land Cover · <span className="text-blue-600">{currentYear}</span>
@@ -233,7 +233,7 @@ export function LandCoverMap({
       </div>
 
       {/* ── Timeline seek bar ─────────────────────────────────────────────── */}
-      <div className="shrink-0 bg-white border-t border-gray-100 px-4 pt-2.5 pb-3 z-10">
+      <div className="shrink-0 bg-white border-t border-gray-200 px-4 pt-2.5 pb-3 z-10">
         <div className="flex items-center gap-3">
           {/* Play / Pause button */}
           <button

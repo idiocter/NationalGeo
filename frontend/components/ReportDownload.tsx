@@ -29,8 +29,8 @@ export function ReportDownload({ result }: Props) {
               download
               className={`flex items-start gap-2 p-3 rounded-xl border text-left transition-colors ${
                 artefact
-                  ? "border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer"
-                  : "border-gray-100 opacity-40 cursor-not-allowed pointer-events-none"
+                  ? "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+                  : "border-gray-200 bg-gray-50 opacity-40 cursor-not-allowed pointer-events-none"
               }`}
             >
               <span className="text-lg leading-none">{icon}</span>

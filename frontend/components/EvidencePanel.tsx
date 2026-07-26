@@ -45,13 +45,13 @@ export function EvidencePanel({ evidence }: Props) {
       </h3>
 
       {real.length === 0 && (
-        <p className="text-xs text-gray-400 bg-gray-50 rounded-xl p-3 border border-gray-100">
+        <p className="text-xs text-gray-500 bg-gray-50 rounded-xl p-3 border border-gray-200">
           No supporting evidence could be derived from available datasets.
         </p>
       )}
 
       {real.map((stmt, i) => (
-        <div key={i} className="border border-gray-100 rounded-xl overflow-hidden">
+        <div key={i} className="border border-gray-200 rounded-xl overflow-hidden bg-white">
           <button
             className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors"
             onClick={() => setOpen(open === i ? null : i)}
@@ -72,15 +72,15 @@ export function EvidencePanel({ evidence }: Props) {
           </button>
 
           {open === i && (
-            <div className="px-3 pb-3 pt-1 space-y-2 bg-gray-50 text-xs text-gray-600 border-t border-gray-100">
+            <div className="px-3 pb-3 pt-2 space-y-2 bg-gray-50 text-xs text-gray-600 border-t border-gray-200">
               <p className="text-gray-700">{stmt.claim}</p>
               {stmt.metric && (
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white rounded-lg p-2 border border-gray-100">
+                  <div className="bg-white rounded-lg p-2 border border-gray-200">
                     <div className="text-[10px] text-gray-400 mb-0.5">Observed</div>
                     <div className="font-medium text-gray-800">{stmt.metric}</div>
                   </div>
-                  <div className="bg-white rounded-lg p-2 border border-gray-100">
+                  <div className="bg-white rounded-lg p-2 border border-gray-200">
                     <div className="text-[10px] text-gray-400 mb-0.5">Baseline</div>
                     <div className="font-medium text-gray-800">{stmt.baseline ?? "—"}</div>
                   </div>
@@ -97,7 +97,7 @@ export function EvidencePanel({ evidence }: Props) {
       ))}
 
       {missing.length > 0 && (
-        <div className="text-[10px] text-gray-400 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+        <div className="text-[10px] text-gray-500 bg-amber-50 rounded-xl px-3 py-2 border border-amber-100">
           <span className="font-semibold text-gray-500">Missing datasets</span> — {missing.length} transition{missing.length !== 1 ? "s" : ""} could not be evaluated due to insufficient supporting data.
         </div>
       )}

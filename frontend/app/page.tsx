@@ -44,7 +44,6 @@ export default function HomePage() {
     api.dashboard.get().then(setDashboard).catch(() => {});
   }, []);
 
-  // Close dropdown when clicking outside the search widget
   useEffect(() => {
     function onPointerDown(e: PointerEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -90,9 +89,10 @@ export default function HomePage() {
   }
 
   return (
-    <main className="h-screen flex flex-col">
-      <header className="h-12 flex items-center px-4 border-b border-gray-200 bg-white z-10 shrink-0">
-        <span className="font-semibold text-gray-900 text-sm">NGLIP</span>
+    <main className="h-screen flex flex-col bg-white">
+      {/* Header */}
+      <header className="h-12 flex items-center px-4 border-b border-gray-200 bg-white shrink-0 z-20">
+        <span className="font-semibold text-gray-900 text-sm tracking-tight">NGLIP</span>
         <span className="ml-2 text-xs text-gray-400">Nepal GeoAI Land Intelligence Platform</span>
         {loading && (
           <span className="ml-auto text-xs text-gray-400 animate-pulse">Loading boundaries…</span>
@@ -102,14 +102,11 @@ export default function HomePage() {
         )}
       </header>
 
-      <div className="flex-1 relative">
+      <div className="flex-1 relative bg-gray-100">
         <NepalMap municipalities={municipalities} selected={selected} onSelect={handleSelect} />
 
         {/* Search overlay */}
-        <div
-          ref={searchRef}
-          className="absolute top-3 left-3 z-10 w-72"
-        >
+        <div ref={searchRef} className="absolute top-3 left-3 z-10 w-72">
           <div className="relative">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
@@ -127,12 +124,12 @@ export default function HomePage() {
               onChange={(e) => handleQueryChange(e.target.value)}
               onKeyDown={handleKeyDown}
               onFocus={() => query.trim() && setOpen(true)}
-              className="w-full pl-9 pr-8 py-2 text-sm bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl shadow-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             {query && (
               <button
                 onClick={() => { setQuery(""); setOpen(false); inputRef.current?.focus(); }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 leading-none"
                 aria-label="Clear search"
               >
                 ✕
@@ -141,13 +138,13 @@ export default function HomePage() {
           </div>
 
           {open && results.length > 0 && (
-            <ul className="mt-1 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
+            <ul className="mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
               {results.map((m, i) => (
                 <li key={m.id}>
                   <button
                     onClick={() => pickResult(m)}
                     onMouseEnter={() => setActiveIndex(i)}
-                    className={`w-full text-left px-3 py-2 flex flex-col gap-0.5 transition-colors ${
+                    className={`w-full text-left px-3 py-2.5 flex flex-col gap-0.5 transition-colors ${
                       i === activeIndex ? "bg-blue-50" : "hover:bg-gray-50"
                     }`}
                   >
@@ -162,31 +159,39 @@ export default function HomePage() {
           )}
 
           {open && query.trim() && results.length === 0 && !loading && (
-            <div className="mt-1 bg-white border border-gray-100 rounded-lg shadow-lg px-3 py-3 text-xs text-gray-400">
+            <div className="mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg px-3 py-3 text-xs text-gray-400">
               No municipalities match &ldquo;{query}&rdquo;
             </div>
           )}
         </div>
 
-        {/* Dashboard stats overlay — bottom left */}
+        {/* Dashboard stats + hint — bottom left */}
         <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-10">
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow px-3 py-2 text-xs text-gray-600">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-3 py-2 text-xs text-gray-500">
             Search or click any municipality to analyse land cover 2000–2020
           </div>
           {dashboard && (
-            <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow border border-gray-100 px-3 py-2 text-xs">
-              <div className="flex gap-4">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3">
+              <div className="flex gap-5">
                 <div className="text-center">
-                  <div className="text-lg font-bold text-blue-600">{dashboard.analyzed_count}</div>
-                  <div className="text-gray-500">Analysed</div>
+                  <div className="text-lg font-bold text-blue-600 tabular-nums leading-tight">
+                    {dashboard.analyzed_count}
+                  </div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Analysed</div>
                 </div>
+                <div className="w-px bg-gray-100 self-stretch" />
                 <div className="text-center">
-                  <div className="text-lg font-bold text-gray-700">{dashboard.total_municipalities}</div>
-                  <div className="text-gray-500">Total</div>
+                  <div className="text-lg font-bold text-gray-700 tabular-nums leading-tight">
+                    {dashboard.total_municipalities}
+                  </div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Total</div>
                 </div>
+                <div className="w-px bg-gray-100 self-stretch" />
                 <div className="text-center">
-                  <div className="text-lg font-bold text-green-600">{dashboard.coverage_pct}%</div>
-                  <div className="text-gray-500">Coverage</div>
+                  <div className="text-lg font-bold text-emerald-600 tabular-nums leading-tight">
+                    {dashboard.coverage_pct}%
+                  </div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">Coverage</div>
                 </div>
               </div>
             </div>

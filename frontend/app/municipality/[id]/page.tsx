@@ -21,6 +21,12 @@ import {
 } from "@/lib/constants";
 import type { ChangeMatrix, JobResult, LandCoverStatistics, Municipality } from "@/types/api";
 
+const VERDICT_STYLE: Record<string, string> = {
+  pass:  "bg-emerald-50 text-emerald-700 border-emerald-200",
+  warn:  "bg-amber-50 text-amber-700 border-amber-200",
+  block: "bg-red-50 text-red-700 border-red-200",
+};
+
 export default function MunicipalityPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -31,8 +37,6 @@ export default function MunicipalityPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"map" | "charts">("map");
-  // Tracks cache-hit responses where submit() already returns status=complete
-  // without going through the Celery/SSE path.
   const [cacheHitDone, setCacheHitDone] = useState(false);
 
   const { stages, isDone: streamDone } = useJobStream(jobId);
@@ -79,148 +83,146 @@ export default function MunicipalityPage() {
   const changeMatrix: ChangeMatrix | null = result?.change_matrix?.[0] ?? null;
   const validation = result?.validation ?? null;
 
-  const verdictColour =
-    validation?.verdict === "pass"
-      ? "bg-green-50 text-green-700 border-green-200"
-      : validation?.verdict === "warn"
-        ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-        : validation?.verdict === "block"
-          ? "bg-red-50 text-red-700 border-red-200"
-          : "";
-
   return (
-    <main className="h-screen flex flex-col">
-      <header className="h-12 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shrink-0">
+    <main className="h-screen flex flex-col bg-white">
+      {/* Header */}
+      <header className="h-12 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shrink-0 z-20">
         <button
           onClick={() => router.push("/")}
-          className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+          className="text-xs text-gray-400 hover:text-gray-700 transition-colors leading-none"
         >
           ← Map
         </button>
-        <span className="text-gray-200">|</span>
-        <span className="font-semibold text-gray-900 text-sm">
+        <span className="text-gray-200 select-none">|</span>
+        <span className="font-semibold text-gray-900 text-sm tracking-tight truncate">
           {municipality?.name ?? id}
         </span>
         {municipality && (
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-400 truncate hidden sm:block">
             {municipality.province} · {municipality.type.replace(/_/g, " ")}
           </span>
         )}
-        {validation && (
-          <span className={`ml-auto text-xs border rounded px-2 py-0.5 ${verdictColour}`}>
-            QA: {validation.verdict.toUpperCase()}
-          </span>
-        )}
-        {jobId && (isDone || result !== null) && (
-          <a
-            href={api.analysis.reportCsvUrl(jobId)}
-            download
-            className="ml-2 text-xs bg-blue-600 text-white rounded px-3 py-1 hover:bg-blue-700 transition-colors"
-          >
-            Download CSV
-          </a>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {validation && (
+            <span className={`text-xs border rounded-full px-2.5 py-0.5 ${VERDICT_STYLE[validation.verdict] ?? ""}`}>
+              QA: {validation.verdict.toUpperCase()}
+            </span>
+          )}
+          {jobId && isDone && (
+            <a
+              href={api.analysis.reportCsvUrl(jobId)}
+              download
+              className="text-xs bg-gray-900 text-white rounded-lg px-3 py-1.5 hover:bg-gray-700 transition-colors"
+            >
+              CSV
+            </a>
+          )}
+        </div>
       </header>
 
       <div className="flex-1 overflow-hidden flex">
-        <aside className="w-80 shrink-0 border-r border-gray-100 overflow-y-auto p-4 space-y-5">
-          {submitError && (
-            <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-3">
-              {submitError}
-            </div>
-          )}
-
-          {jobId && (
-            <section>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                {isDone ? "Stages completed" : "Analysis progress"}
-              </h3>
-              <AnalysisStream stages={stages} isDone={isDone} />
-            </section>
-          )}
-
-          {availableYears.length > 1 && (
-            <section>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
-                Year snapshot
-              </label>
-              <div className="flex gap-1 flex-wrap">
-                {availableYears.map((yr) => (
-                  <button
-                    key={yr}
-                    onClick={() => setSelectedYear(yr)}
-                    className={`text-xs px-2 py-1 rounded border transition-colors ${
-                      yr === displayYear
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "border-gray-200 text-gray-600 hover:border-blue-300"
-                    }`}
-                  >
-                    {yr}
-                  </button>
-                ))}
+        {/* Sidebar */}
+        <aside className="w-80 shrink-0 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
+          <div className="flex-1 p-4 space-y-5">
+            {submitError && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">
+                {submitError}
               </div>
-            </section>
-          )}
+            )}
 
-          {displayStats && (
-            <section>
-              <StatisticsPanel stats={displayStats} />
-            </section>
-          )}
+            {jobId && (
+              <section>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  {isDone ? "Stages completed" : "Analysis in progress"}
+                </p>
+                <AnalysisStream stages={stages} isDone={isDone} />
+              </section>
+            )}
 
-          {changeMatrix && (
-            <section>
-              <NetChangeTable matrix={changeMatrix} />
-            </section>
-          )}
-
-          {validation?.verdict === "warn" && (
-            <section>
-              <h3 className="text-xs font-semibold text-yellow-600 uppercase tracking-wide mb-2">
-                Data quality notes
-              </h3>
-              <ul className="space-y-1">
-                {validation.checks
-                  .filter((c) => c.status === "warn")
-                  .map((c) => (
-                    <li key={c.id} className="text-xs text-yellow-700 bg-yellow-50 rounded p-2">
-                      {c.detail}
-                    </li>
+            {availableYears.length > 1 && (
+              <section>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Year snapshot
+                </p>
+                <div className="flex gap-1 flex-wrap">
+                  {availableYears.map((yr) => (
+                    <button
+                      key={yr}
+                      onClick={() => setSelectedYear(yr)}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                        yr === displayYear
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600"
+                      }`}
+                    >
+                      {yr}
+                    </button>
                   ))}
-              </ul>
-            </section>
-          )}
+                </div>
+              </section>
+            )}
 
-          {result?.evidence && result.evidence.length > 0 && (
-            <section>
-              <EvidencePanel evidence={result.evidence} />
-            </section>
-          )}
+            {displayStats && (
+              <section className="border-t border-gray-100 pt-4">
+                <StatisticsPanel stats={displayStats} />
+              </section>
+            )}
 
-          {result && jobId && isDone && (
-            <section>
-              <ReportDownload result={{
-                ...result,
-                artefacts: {
-                  pdf:  result.artefacts?.pdf  ?? { url: api.analysis.reportPdfUrl(jobId) },
-                  xlsx: result.artefacts?.xlsx ?? { url: api.analysis.reportXlsxUrl(jobId) },
-                },
-              }} />
-            </section>
-          )}
+            {changeMatrix && (
+              <section className="border-t border-gray-100 pt-4">
+                <NetChangeTable matrix={changeMatrix} />
+              </section>
+            )}
+
+            {validation?.verdict === "warn" && (
+              <section className="border-t border-gray-100 pt-4">
+                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">
+                  Data quality notes
+                </p>
+                <ul className="space-y-1">
+                  {validation.checks
+                    .filter((c) => c.status === "warn")
+                    .map((c) => (
+                      <li key={c.id} className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-2.5">
+                        {c.detail}
+                      </li>
+                    ))}
+                </ul>
+              </section>
+            )}
+
+            {result?.evidence && result.evidence.length > 0 && (
+              <section className="border-t border-gray-100 pt-4">
+                <EvidencePanel evidence={result.evidence} />
+              </section>
+            )}
+
+            {result && jobId && isDone && (
+              <section className="border-t border-gray-100 pt-4">
+                <ReportDownload result={{
+                  ...result,
+                  artefacts: {
+                    pdf:  result.artefacts?.pdf  ?? { url: api.analysis.reportPdfUrl(jobId) },
+                    xlsx: result.artefacts?.xlsx ?? { url: api.analysis.reportXlsxUrl(jobId) },
+                  },
+                }} />
+              </section>
+            )}
+          </div>
         </aside>
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        {/* Main content area */}
+        <div className="flex-1 overflow-hidden flex flex-col bg-gray-50">
           {/* Tab bar */}
-          <div className="flex border-b border-gray-100 bg-white shrink-0 px-4">
+          <div className="flex border-b border-gray-200 bg-white shrink-0 px-4">
             {(["map", "charts"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`text-xs px-4 py-2.5 border-b-2 transition-colors capitalize ${
+                className={`text-xs px-4 py-3 border-b-2 transition-colors ${
                   activeTab === tab
                     ? "border-blue-600 text-blue-600 font-semibold"
-                    : "border-transparent text-gray-400 hover:text-gray-700"
+                    : "border-transparent text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {tab === "map" ? "Land Cover Map" : "Charts & Tables"}
@@ -228,7 +230,7 @@ export default function MunicipalityPage() {
             ))}
           </div>
 
-          {/* Map tab — flex-1 min-h-0 so h-full resolves inside a flex column */}
+          {/* Map tab */}
           {activeTab === "map" && (
             <div className="flex-1 min-h-0 overflow-hidden">
               {municipality ? (
@@ -249,74 +251,76 @@ export default function MunicipalityPage() {
 
           {/* Charts tab */}
           {activeTab === "charts" && (
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* KPI summary row */}
-              {displayStats && (
-                <div className="grid grid-cols-3 gap-3">
-                  {(() => {
-                    const top = [...displayStats.classes]
-                      .filter((c) => c.code !== 0)
-                      .sort((a, b) => b.area_km2 - a.area_km2)[0];
-                    const totalKm2 = displayStats.classes
-                      .filter((c) => c.code !== 0)
-                      .reduce((s, c) => s + c.area_km2, 0);
-                    const biggestNetChange = changeMatrix
-                      ? [...changeMatrix.net_change]
-                          .filter((n) => Math.abs(n.delta_km2) > 0.01)
-                          .sort((a, b) => Math.abs(b.delta_km2) - Math.abs(a.delta_km2))[0]
-                      : null;
-                    return (
-                      <>
-                        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Total area</p>
-                          <p className="text-xl font-bold text-gray-900 tabular-nums">
-                            {totalKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                            <span className="text-sm font-normal text-gray-400 ml-1">km²</span>
+              {displayStats && (() => {
+                const top = [...displayStats.classes]
+                  .filter((c) => c.code !== 0)
+                  .sort((a, b) => b.area_km2 - a.area_km2)[0];
+                const totalKm2 = displayStats.classes
+                  .filter((c) => c.code !== 0)
+                  .reduce((s, c) => s + c.area_km2, 0);
+                const biggestNetChange = changeMatrix
+                  ? [...changeMatrix.net_change]
+                      .filter((n) => Math.abs(n.delta_km2) > 0.01)
+                      .sort((a, b) => Math.abs(b.delta_km2) - Math.abs(a.delta_km2))[0]
+                  : null;
+                return (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Total area</p>
+                      <p className="text-xl font-bold text-gray-900 tabular-nums leading-tight">
+                        {totalKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        <span className="text-sm font-normal text-gray-400 ml-1">km²</span>
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1">{displayYear}</p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Dominant type</p>
+                      <p className="text-sm font-bold text-gray-900 leading-tight">
+                        {top ? (CLASS_NAMES[top.code] ?? top.name) : "—"}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {top ? `${top.share_pct.toFixed(1)}% of total` : ""}
+                      </p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Biggest change</p>
+                      {biggestNetChange ? (
+                        <>
+                          <p className={`text-sm font-bold leading-tight ${biggestNetChange.delta_km2 > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                            {biggestNetChange.delta_km2 > 0 ? "+" : ""}
+                            {biggestNetChange.delta_km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
                           </p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">{displayYear}</p>
-                        </div>
-                        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Dominant type</p>
-                          <p className="text-sm font-bold text-gray-900 leading-tight">{top ? (CLASS_NAMES[top.code] ?? top.name) : "—"}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">{top ? `${top.share_pct.toFixed(1)}% of total` : ""}</p>
-                        </div>
-                        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Biggest change</p>
-                          {biggestNetChange ? (
-                            <>
-                              <p className={`text-sm font-bold leading-tight ${biggestNetChange.delta_km2 > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                                {biggestNetChange.delta_km2 > 0 ? "+" : ""}
-                                {biggestNetChange.delta_km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
-                              </p>
-                              <p className="text-[10px] text-gray-400 mt-0.5">
-                                {CLASS_NAMES[biggestNetChange.code] ?? biggestNetChange.class_name} · {changeMatrix!.from_year}–{changeMatrix!.to_year}
-                              </p>
-                            </>
-                          ) : (
-                            <p className="text-sm text-gray-300">—</p>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            {CLASS_NAMES[biggestNetChange.code] ?? biggestNetChange.class_name}
+                            {" · "}{changeMatrix!.from_year}–{changeMatrix!.to_year}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-300 mt-1">—</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {availableStats.length >= 2 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <TrendChart statistics={availableStats} />
                 </div>
               )}
 
               {changeMatrix && changeMatrix.trend_series.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <ChangeChart change={changeMatrix} />
                 </div>
               )}
 
               {!result && !submitError && (
-                <div className="flex items-center justify-center h-40 text-gray-300 text-sm">
-                  Analysis running…
+                <div className="flex flex-col items-center justify-center h-40 gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="text-xs text-gray-400">Analysis running…</span>
                 </div>
               )}
 
