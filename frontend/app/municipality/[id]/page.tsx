@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 
 import { AnalysisStream } from "@/components/AnalysisStream";
 import { ChangeChart } from "@/components/ChangeChart";
+import { ComparisonBarChart } from "@/components/ComparisonBarChart";
+import { DeltaLineChart } from "@/components/DeltaLineChart";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { LandCoverMap } from "@/components/LandCoverMap";
 import { NetChangeTable } from "@/components/NetChangeTable";
@@ -305,6 +307,19 @@ export default function MunicipalityPage() {
                 );
               })()}
 
+              {/* Row 1: Comparison bar + delta line */}
+              {availableStats.length >= 2 && (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <ComparisonBarChart statistics={availableStats} />
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <DeltaLineChart statistics={availableStats} />
+                  </div>
+                </div>
+              )}
+
+              {/* Row 2: Year-by-year trend line + stacked area */}
               {availableStats.length >= 2 && (
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <TrendChart statistics={availableStats} />
