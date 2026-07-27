@@ -33,6 +33,7 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:
         condition: service_healthy
@@ -46,6 +47,7 @@ services:
       FORECAST_ENABLED: "false"
     volumes:
       - ../data:/data
+      - ../backend:/app/backend  # live code mount — no rebuild needed on Python changes
     ports:
       - "8000:8000"
 
@@ -71,6 +73,7 @@ services:
       FORECAST_ENABLED: "false"
     volumes:
       - ../data:/data
+      - ../backend:/app/backend  # live code mount — celery auto-restarts via watchdog if needed
 
   frontend:
     build:
