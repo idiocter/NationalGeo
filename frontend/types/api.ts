@@ -146,6 +146,32 @@ export interface ProvinceStats {
   total: number;
 }
 
+export interface ProvinceInfo {
+  province: string;
+  municipality_count: number;
+  district_count: number;
+  total_area_km2: number;
+  population: number;
+  geometry?: GeoJSON.MultiPolygon | GeoJSON.Polygon;
+}
+
+export interface DistrictInfo {
+  district: string;
+  province: string;
+  municipality_count: number;
+  total_area_km2: number;
+  population: number;
+  geometry?: GeoJSON.MultiPolygon | GeoJSON.Polygon;
+}
+
+/** A custom land-cover class group (merged from one or more ICIMOD codes). */
+export interface CustomClassGroup {
+  id: string;
+  name: string;
+  codes: number[];
+  color: string;
+}
+
 export interface RecentJob {
   job_id: string;
   municipality_name: string;
