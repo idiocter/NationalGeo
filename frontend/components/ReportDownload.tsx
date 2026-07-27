@@ -95,37 +95,52 @@ export function ReportDownload({ result, pdfUrl, xlsxUrl, comparisonMapUrl, chan
         })}
       </div>
 
-      {/* Map images */}
+      {/* Map images — shown as live preview tiles with download button */}
       <div>
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
           Map images
         </p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
           {MAP_ITEMS.map(({ key, urlKey, label, description, filename }) => {
             const url = mapUrls[urlKey] ?? result.artefacts?.[key]?.url;
             return (
-              <a
-                key={key}
-                href={url}
-                download={filename}
-                className={`flex items-start gap-2 p-3 rounded-xl border text-left transition-colors ${
-                  url
-                    ? "border-gray-200 bg-white hover:border-emerald-400 hover:bg-emerald-50 cursor-pointer"
-                    : "border-gray-200 bg-gray-50 opacity-40 cursor-not-allowed pointer-events-none"
-                }`}
-              >
-                <span className={`mt-0.5 shrink-0 ${url ? "text-emerald-600" : "text-gray-300"}`}>
-                  <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor">
-                    <rect x="2" y="2" width="16" height="16" rx="2"/>
-                    <circle cx="7" cy="7" r="1.5" fill="white"/>
-                    <path d="M2 13l4-4 3 3 3-4 6 5" stroke="white" strokeWidth="1.2" fill="none"/>
-                  </svg>
-                </span>
-                <div>
-                  <div className="text-xs font-medium text-gray-800">{label}</div>
-                  <div className="text-[10px] text-gray-400">{description} · PNG</div>
+              <div key={key} className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                {/* Preview thumbnail */}
+                {url ? (
+                  <img
+                    src={url}
+                    alt={label}
+                    className="w-full object-cover"
+                    style={{ maxHeight: 90 }}
+                  />
+                ) : (
+                  <div className="w-full h-16 bg-gray-100 flex items-center justify-center text-[10px] text-gray-400">
+                    Not generated
+                  </div>
+                )}
+                {/* Caption + download */}
+                <div className="flex items-center justify-between px-2.5 py-1.5">
+                  <div>
+                    <div className="text-[11px] font-semibold text-gray-700">{label}</div>
+                    <div className="text-[10px] text-gray-400">{description}</div>
+                  </div>
+                  <a
+                    href={url}
+                    download={filename}
+                    aria-label={`Download ${label}`}
+                    className={`shrink-0 ml-2 w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                      url
+                        ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
+                        : "bg-gray-50 text-gray-300 cursor-not-allowed pointer-events-none border border-gray-100"
+                    }`}
+                  >
+                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 2v8m0 0l-3-3m3 3l3-3"/>
+                      <path d="M3 12h10"/>
+                    </svg>
+                  </a>
                 </div>
-              </a>
+              </div>
             );
           })}
         </div>

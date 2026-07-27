@@ -331,7 +331,7 @@ async def municipality_change_png(
     if request.method == "HEAD":
         return _head_response(_cog_path(dataset_version, from_year))
 
-    geom_json = json.dumps(row["g"])
+    geom_json = row["g"]  # ST_AsGeoJSON returns a text string — no re-encoding needed
 
     try:
         loop = asyncio.get_event_loop()
@@ -370,7 +370,7 @@ async def province_landcover_png(
     if request.method == "HEAD":
         return _head_response(_cog_path(dataset_version, year))
 
-    geom_json = json.dumps(row["g"])
+    geom_json = row["g"]  # ST_AsGeoJSON returns a text string — no re-encoding needed
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bounds = await loop.run_in_executor(
@@ -408,7 +408,7 @@ async def district_landcover_png(
     if request.method == "HEAD":
         return _head_response(_cog_path(dataset_version, year))
 
-    geom_json = json.dumps(row["g"])
+    geom_json = row["g"]  # ST_AsGeoJSON returns a text string — no re-encoding needed
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bounds = await loop.run_in_executor(
@@ -444,7 +444,7 @@ async def country_landcover_png(
     if request.method == "HEAD":
         return _head_response(_cog_path(dataset_version, year))
 
-    geom_json = json.dumps(row["g"])
+    geom_json = row["g"]  # ST_AsGeoJSON returns a text string — no re-encoding needed
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bounds = await loop.run_in_executor(
