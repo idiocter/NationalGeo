@@ -26,8 +26,8 @@ export const api = {
   municipalities: {
     list:   () => request<Municipality[]>("/municipalities"),
     get:    (id: string) => request<Municipality>(`/municipalities/${id}`),
-    landcoverPngUrl: (id: string, year: number, datasetVersion = "landcover-v3.1", mode: "standard" | "forest" = "standard") =>
-      `${BASE_URL}/municipalities/${id}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=${mode}`,
+    landcoverPngUrl: (id: string, year: number, datasetVersion = "landcover-v3.1") =>
+      `${BASE_URL}/municipalities/${id}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=forest`,
     changePngUrl: (id: string, fromYear: number, toYear: number, datasetVersion = "landcover-v3.1") =>
       `${BASE_URL}/municipalities/${id}/landcover/change/${fromYear}-${toYear}.png?dataset_version=${datasetVersion}`,
   },
@@ -38,7 +38,7 @@ export const api = {
     districts: (name: string) => request<DistrictInfo[]>(`/provinces/${encodeURIComponent(name)}/districts`),
     municipalities: (name: string) => request<Municipality[]>(`/provinces/${encodeURIComponent(name)}/municipalities`),
     landcoverPngUrl: (name: string, year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/provinces/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}`,
+      `${BASE_URL}/provinces/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=forest`,
   },
 
   districts: {
@@ -46,13 +46,13 @@ export const api = {
     get:  (name: string) => request<DistrictInfo>(`/districts/${encodeURIComponent(name)}`),
     municipalities: (name: string) => request<Municipality[]>(`/districts/${encodeURIComponent(name)}/municipalities`),
     landcoverPngUrl: (name: string, year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/districts/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}`,
+      `${BASE_URL}/districts/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=forest`,
   },
 
   country: {
     get: () => request<{ name: string; municipality_count: number; district_count: number; province_count: number; total_area_km2: number; population: number }>("/country"),
     landcoverPngUrl: (year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/country/landcover/${year}.png?dataset_version=${datasetVersion}`,
+      `${BASE_URL}/country/landcover/${year}.png?dataset_version=${datasetVersion}&mode=forest`,
   },
 
   analysis: {

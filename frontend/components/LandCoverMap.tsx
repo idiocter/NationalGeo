@@ -117,7 +117,7 @@ export function LandCoverMap({
         }
 
         // Add initial land cover overlay below the boundary outline
-        const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear, undefined, "forest");
+        const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
         map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
         map.addLayer(
           { id: LAYER_ID, type: "raster", source: SOURCE_ID, paint: { "raster-opacity": 1.0 } },
@@ -158,7 +158,7 @@ export function LandCoverMap({
       if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
     } catch { /* ignore if already removed */ }
 
-    const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear, undefined, "forest");
+    const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
     map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
     map.addLayer({
       id: LAYER_ID, type: "raster", source: SOURCE_ID,
