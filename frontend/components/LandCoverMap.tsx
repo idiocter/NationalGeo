@@ -47,7 +47,7 @@ export function LandCoverMap({
   const [yearIdx, setYearIdx]     = useState(initIdx);
   const [loading, setLoading]     = useState(true);
   const [playing, setPlaying]     = useState(false);
-  const [forestView, setForestView] = useState(false);
+  const [forestView, setForestView] = useState(true);
 
   const currentYear = availableYears[yearIdx] ?? year;
   const currentStats = allStats.find((s) => s.year === currentYear) ?? null;

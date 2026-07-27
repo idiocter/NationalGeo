@@ -49,7 +49,7 @@ export const DEFAULT_BOUNDARY_VERSION = "mof-2021";
 export const ANALYSIS_YEARS: number[] = [2000, 2005, 2010, 2015, 2020];
 
 // Forest-area binary classification:
-// Forest + Grassland + Shrubland + Cultivated Land + Open Woodland
-export const FOREST_CODES = new Set([4, 5, 6, 7, 9]);
+// Forest + Grassland + Shrubland + Open Woodland (Cultivated Land excluded)
+export const FOREST_CODES = new Set([4, 5, 6, 9]);
 export const FOREST_COLOUR     = "#2d6a4f";  // deep green
 export const NON_FOREST_COLOUR = "#c8b79c";  // warm tan
