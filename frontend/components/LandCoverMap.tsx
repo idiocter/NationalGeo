@@ -206,9 +206,11 @@ export function LandCoverMap({
     ? (yearIdx / (availableYears.length - 1)) * 100
     : 0;
 
-  // Legend entries for current year
+  // Legend entries: only classes actually present (area > 0) when stats are loaded
   const legendEntries = currentStats
-    ? [...currentStats.classes].sort((a, b) => b.area_km2 - a.area_km2)
+    ? [...currentStats.classes]
+        .filter((c) => c.code !== 0 && c.area_km2 > 0)
+        .sort((a, b) => b.area_km2 - a.area_km2)
     : Object.entries(CLASS_NAMES)
         .filter(([c]) => c !== "0")
         .map(([code, name]) => ({ code: Number(code), name, share_pct: null as number | null }));
