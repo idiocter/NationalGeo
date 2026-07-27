@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ImageSource, Map as MapLibreMap } from "maplibre-gl";
-import { FOREST_CODES, FOREST_COLOUR, NON_FOREST_COLOUR } from "@/lib/constants";
+import { CLASS_COLOURS, CLASS_NAMES } from "@/lib/constants";
 import { api } from "@/lib/api";
 import type { LandCoverStatistics, Municipality } from "@/types/api";
 
@@ -164,7 +164,7 @@ export function LandCoverMap({
       id: LAYER_ID, type: "raster", source: SOURCE_ID,
       paint: { "raster-opacity": 1.0 },
     }, "boundary-line"); // insert below boundary so outline stays on top
-  }, [currentYear, forestView]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-play ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -206,17 +206,11 @@ export function LandCoverMap({
     ? (yearIdx / (availableYears.length - 1)) * 100
     : 0;
 
-  const forestLegend = (() => {
-    if (!currentStats) return null;
-    const valid = currentStats.classes.filter((c) => c.code !== 0 && c.area_km2 > 0);
-    const forestKm2    = valid.filter((c) =>  FOREST_CODES.has(c.code)).reduce((s, c) => s + c.area_km2, 0);
-    const nonForestKm2 = valid.filter((c) => !FOREST_CODES.has(c.code)).reduce((s, c) => s + c.area_km2, 0);
-    const total = forestKm2 + nonForestKm2 || 1;
-    return [
-      { label: "Forest Area",     colour: FOREST_COLOUR,     km2: forestKm2,    pct: (forestKm2    / total) * 100 },
-      { label: "Non-Forest Area", colour: NON_FOREST_COLOUR, km2: nonForestKm2, pct: (nonForestKm2 / total) * 100 },
-    ];
-  })();
+  const legendEntries = currentStats
+    ? [...currentStats.classes]
+        .filter((c) => c.code !== 0 && c.area_km2 > 0)
+        .sort((a, b) => b.area_km2 - a.area_km2)
+    : [];
 
   return (
     <div className="w-full h-full relative flex flex-col">
@@ -252,24 +246,25 @@ export function LandCoverMap({
 
         {/* Legend — bottom-right above seek bar */}
         <div className="absolute bottom-2 right-2 z-10 bg-white
-                        rounded-xl shadow-md border border-gray-200 p-2.5 min-w-[170px]">
+                        rounded-xl shadow-md border border-gray-200 p-2.5
+                        max-h-52 overflow-y-auto min-w-[160px]">
           <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-            Forest Cover · <span className="text-blue-600">{currentYear}</span>
+            Land Cover · <span className="text-blue-600">{currentYear}</span>
           </p>
-          {forestLegend ? (
-            <div className="space-y-1.5">
-              {forestLegend.map(({ label, colour, km2, pct }) => (
-                <div key={label} className="flex items-center gap-1.5">
-                  <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: colour }} />
-                  <span className="text-[10px] text-gray-700 leading-tight flex-1">{label}</span>
-                  <div className="text-right">
-                    <div className="text-[10px] font-medium text-gray-700 tabular-nums leading-none">
-                      {km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
-                    </div>
-                    <div className="text-[9px] text-gray-400 tabular-nums leading-none">
-                      {pct.toFixed(1)}%
-                    </div>
-                  </div>
+          {legendEntries.length > 0 ? (
+            <div className="space-y-1">
+              {legendEntries.map((cls) => (
+                <div key={cls.code} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-3 h-3 rounded-sm shrink-0 border border-gray-300/60"
+                    style={{ backgroundColor: CLASS_COLOURS[cls.code] ?? "#ccc" }}
+                  />
+                  <span className="text-[10px] text-gray-700 leading-tight flex-1 truncate">
+                    {CLASS_NAMES[cls.code] ?? cls.name}
+                  </span>
+                  <span className="text-[10px] text-gray-400 tabular-nums">
+                    {cls.share_pct.toFixed(1)}%
+                  </span>
                 </div>
               ))}
             </div>

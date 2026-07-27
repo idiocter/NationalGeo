@@ -277,7 +277,7 @@ async def municipality_landcover_png(
     municipality_id: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
-    mode: str = Query(default="forest", pattern="^(standard|forest)$"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     result = await db.execute(
@@ -355,7 +355,7 @@ async def province_landcover_png(
     province_name: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
-    mode: str = Query(default="forest", pattern="^(standard|forest)$"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     row = (await db.execute(
@@ -393,7 +393,7 @@ async def district_landcover_png(
     district_name: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
-    mode: str = Query(default="forest", pattern="^(standard|forest)$"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     row = (await db.execute(
@@ -430,7 +430,7 @@ async def country_landcover_png(
     request: Request,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
-    mode: str = Query(default="forest", pattern="^(standard|forest)$"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     row = (await db.execute(
