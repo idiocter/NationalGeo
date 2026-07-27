@@ -95,6 +95,7 @@ export function LandCoverMap({
         },
         center: [(bbox.west + bbox.east) / 2, (bbox.south + bbox.north) / 2],
         zoom: 9,
+        preserveDrawingBuffer: true, // required for canvas.toBlob() download
       });
 
       map.addControl(new NavigationControl(), "top-right");
@@ -184,6 +185,22 @@ export function LandCoverMap({
     if (playing) setPlaying(false); // pause when user manually scrubs
   }, [playing]);
 
+  const handleDownload = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `landcover_${municipality.id}_${currentYear}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }, [municipality.id, currentYear]);
+
   // Slider track fill percentage
   const pct = availableYears.length > 1
     ? (yearIdx / (availableYears.length - 1)) * 100
@@ -211,6 +228,22 @@ export function LandCoverMap({
             Loading {currentYear}…
           </div>
         )}
+
+        {/* North arrow — top-left */}
+        <div className="absolute top-2 left-2 z-10 bg-white/90 rounded-xl
+                        shadow-sm border border-gray-200 px-2 py-1.5
+                        flex flex-col items-center gap-0.5 select-none pointer-events-none">
+          <span className="text-[9px] font-bold text-gray-800 leading-none">N</span>
+          <svg viewBox="0 0 14 20" className="w-3.5 h-5" aria-hidden="true">
+            {/* North half — dark */}
+            <polygon points="7,0 0,14 7,10" fill="#1e293b" />
+            {/* South half — light */}
+            <polygon points="7,20 14,14 7,10" fill="#94a3b8" />
+            {/* South half left */}
+            <polygon points="7,20 0,14 7,10" fill="#cbd5e1" />
+          </svg>
+          <span className="text-[9px] text-gray-400 leading-none">S</span>
+        </div>
 
         {/* Legend — bottom-right above seek bar */}
         <div className="absolute bottom-2 right-2 z-10 bg-white
@@ -256,13 +289,11 @@ export function LandCoverMap({
                        text-white flex items-center justify-center transition-colors shadow-sm"
           >
             {playing ? (
-              /* Pause icon */
               <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
                 <rect x="3" y="2" width="3.5" height="12" rx="1"/>
                 <rect x="9.5" y="2" width="3.5" height="12" rx="1"/>
               </svg>
             ) : (
-              /* Play icon */
               <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
                 <path d="M4 2.5l9 5.5-9 5.5V2.5z"/>
               </svg>
@@ -271,15 +302,12 @@ export function LandCoverMap({
 
           {/* Slider + tick marks */}
           <div className="flex-1 flex flex-col gap-1">
-            {/* Current year badge */}
             <div className="flex justify-between items-center mb-0.5">
               <span className="text-[10px] text-gray-400 uppercase tracking-wide">
                 Land cover timeline
               </span>
               <span className="text-xs font-bold text-blue-600">{currentYear}</span>
             </div>
-
-            {/* Range input */}
             <div className="relative">
               <input
                 type="range"
@@ -294,7 +322,6 @@ export function LandCoverMap({
                   accentColor: "#2563eb",
                 }}
               />
-              {/* Tick marks */}
               <div className="flex justify-between px-0 mt-1">
                 {availableYears.map((yr, i) => (
                   <button
@@ -311,6 +338,22 @@ export function LandCoverMap({
               </div>
             </div>
           </div>
+
+          {/* Download current year map as PNG */}
+          <button
+            onClick={handleDownload}
+            aria-label="Download map image"
+            title={`Download ${currentYear} land cover map`}
+            className="shrink-0 w-8 h-8 rounded-full bg-white hover:bg-gray-50
+                       border border-gray-200 hover:border-blue-400
+                       text-gray-500 hover:text-blue-600
+                       flex items-center justify-center transition-colors shadow-sm"
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 2v8m0 0l-3-3m3 3l3-3"/>
+              <path d="M3 12h10"/>
+            </svg>
+          </button>
         </div>
       </div>
 
