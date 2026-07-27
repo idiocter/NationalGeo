@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { AnalysisStream } from "@/components/AnalysisStream";
-import { ChangeChart } from "@/components/ChangeChart";
+import { AlluvialChart } from "@/components/AlluvialChart";
+import { ClassificationUploader } from "@/components/ClassificationUploader";
 import { ComparisonBarChart } from "@/components/ComparisonBarChart";
 import { DeltaLineChart } from "@/components/DeltaLineChart";
 import { EvidencePanel } from "@/components/EvidencePanel";
@@ -21,7 +22,7 @@ import {
   DEFAULT_BOUNDARY_VERSION,
   DEFAULT_DATASET_VERSION,
 } from "@/lib/constants";
-import type { ChangeMatrix, JobResult, LandCoverStatistics, Municipality } from "@/types/api";
+import type { ChangeMatrix, CustomClassGroup, JobResult, LandCoverStatistics, Municipality } from "@/types/api";
 
 const VERDICT_STYLE: Record<string, string> = {
   pass:  "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -40,6 +41,7 @@ export default function MunicipalityPage() {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"map" | "charts">("map");
   const [cacheHitDone, setCacheHitDone] = useState(false);
+  const [customGroups, setCustomGroups] = useState<CustomClassGroup[] | null>(null);
 
   const { stages, isDone: streamDone } = useJobStream(jobId);
   const isDone = streamDone || cacheHitDone;
@@ -199,6 +201,10 @@ export default function MunicipalityPage() {
               </section>
             )}
 
+            <section className="border-t border-gray-100 pt-4">
+              <ClassificationUploader groups={customGroups} onChange={setCustomGroups} />
+            </section>
+
             {result && jobId && isDone && (
               <section className="border-t border-gray-100 pt-4">
                 <ReportDownload result={{
@@ -208,6 +214,17 @@ export default function MunicipalityPage() {
                     xlsx: result.artefacts?.xlsx ?? { url: api.analysis.reportXlsxUrl(jobId) },
                   },
                 }} />
+                <a
+                  href={api.analysis.downloadZipUrl(jobId)}
+                  download
+                  className="mt-2 flex items-center justify-center gap-1.5 w-full text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
+                    <path d="M8 12L3 7h3V2h4v5h3L8 12z"/>
+                    <rect x="2" y="13" width="12" height="1.5" rx="0.75"/>
+                  </svg>
+                  Download all outputs (.zip)
+                </a>
               </section>
             )}
           </div>
@@ -326,9 +343,9 @@ export default function MunicipalityPage() {
                 </div>
               )}
 
-              {changeMatrix && changeMatrix.trend_series.length > 0 && (
+              {changeMatrix && changeMatrix.transitions.length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                  <ChangeChart change={changeMatrix} />
+                  <AlluvialChart change={changeMatrix} customGroups={customGroups} />
                 </div>
               )}
 
