@@ -35,7 +35,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
-    expose_headers=["X-Bbox-West", "X-Bbox-South", "X-Bbox-East", "X-Bbox-North"],
+    expose_headers=["X-Bbox-West", "X-Bbox-South", "X-Bbox-East", "X-Bbox-North", "Content-Disposition"],
 )
 
 app.include_router(analysis_router)

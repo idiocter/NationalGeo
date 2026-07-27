@@ -1,9 +1,11 @@
-"""Land-cover map tile endpoint.
+"""Land-cover map tile endpoints.
 
-Returns a clipped, colour-mapped RGBA PNG of the ICIMOD land-cover raster
-for a specific municipality and year.  The PNG is positioned in geographic
-space using the bbox headers the frontend reads to place a MapLibre image
-layer.
+Renders clipped, colour-mapped RGBA PNGs from the ICIMOD COG stack.
+Supports municipality, district, province, and country level.
+Also provides a change-detection overlay PNG.
+
+MapLibre GL JS v3 sends a HEAD preflight before updateImage(); all GET routes
+are registered with both GET and HEAD methods.
 """
 
 from __future__ import annotations
@@ -28,58 +30,45 @@ from backend.contracts.geo_utils import reproject_geometry
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-router = APIRouter(prefix="/municipalities", tags=["landcover"])
+router = APIRouter(tags=["landcover"])
 
-# ICIMOD 11-class RGBA palette — verified against national VAT pixel counts.
-# Codes 2/7 and 3/6 were previously swapped; corrected here.
-# Nodata (code 0) is fully transparent so the base map shows through.
-_ALPHA = 255  # fully opaque — no basemap behind the overlay
+_ALPHA = 255
 
 _PALETTE: dict[int, tuple[int, int, int, int]] = {
-    0:  (  0,   0,   0,   0),  # NoData        — fully transparent
-    1:  ( 74, 144, 217, _ALPHA),  # Water Body    — blue
-    2:  (176, 214, 235, _ALPHA),  # Snow/Glacier  — mid blue (more visible than near-white)
-    3:  (196, 178, 138, _ALPHA),  # Barren Land   — tan
-    4:  ( 26, 122,  74, _ALPHA),  # Forest        — dark green
-    5:  (144, 212,  75, _ALPHA),  # Grassland     — light green
-    6:  (168, 201, 127, _ALPHA),  # Shrubland     — olive green
-    7:  (245, 212,  78, _ALPHA),  # Cultivated    — yellow
-    8:  (214,  59,  47, _ALPHA),  # Settlement    — red
-    9:  ( 93, 160, 111, _ALPHA),  # Open Woodland — medium green
-    10: (139, 115,  85, _ALPHA),  # Rocky/Bare    — brown
-    11: (176, 176, 176, _ALPHA),  # Others        — grey
+    0:  (  0,   0,   0,   0),
+    1:  ( 74, 144, 217, _ALPHA),
+    2:  (176, 214, 235, _ALPHA),
+    3:  (196, 178, 138, _ALPHA),
+    4:  ( 26, 122,  74, _ALPHA),
+    5:  (144, 212,  75, _ALPHA),
+    6:  (168, 201, 127, _ALPHA),
+    7:  (245, 212,  78, _ALPHA),
+    8:  (214,  59,  47, _ALPHA),
+    9:  ( 93, 160, 111, _ALPHA),
+    10: (139, 115,  85, _ALPHA),
+    11: (176, 176, 176, _ALPHA),
 }
-
-# Fallback colour for any unexpected class code
 _UNKNOWN_RGBA = (128, 0, 128, 220)
 
+# Change-overlay colours: unchanged=transparent, changed=coloured by destination class
+_CHANGE_UNCHANGED = (0, 0, 0, 0)
 
-def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[bytes, list[float]]:
-    """Synchronous: clip COG → colour map → PNG bytes + [west, south, east, north]."""
+
+# ── Core rendering (geometry-first) ──────────────────────────────────────────
+
+def _render_png_from_geojson(
+    geom_json: str,
+    year: int,
+    dataset_version: str,
+) -> tuple[bytes, list[float]]:
+    """Render land-cover PNG given a GeoJSON geometry string (EPSG:4326)."""
     import rasterio
     from rasterio.mask import mask as rasterio_mask
     from shapely.geometry import shape
     from PIL import Image
-    from sqlalchemy import create_engine, text as stext
 
-    # Build a short-lived sync engine for this thread
-    raw_url = settings.database_url
-    suffix = raw_url.split("://", 1)[1]
-    sync_url = f"postgresql+psycopg2://{suffix}"
-    engine = create_engine(sync_url, pool_size=1, max_overflow=0)
-
-    with engine.connect() as conn:
-        row = conn.execute(
-            stext("SELECT ST_AsGeoJSON(geom) AS g FROM municipalities WHERE id = :id"),
-            {"id": municipality_id},
-        ).first()
-    engine.dispose()
-
-    if row is None:
-        raise ValueError(f"Municipality '{municipality_id}' not found")
-
-    geom_4326 = shape(json.loads(row.g))
-    bounds = geom_4326.bounds  # (minx/west, miny/south, maxx/east, maxy/north)
+    geom_4326 = shape(json.loads(geom_json))
+    bounds = geom_4326.bounds  # (west, south, east, north)
 
     cog = Path(settings.object_store_path) / "landcover" / dataset_version / f"{year}.tif"
     if not cog.exists():
@@ -89,8 +78,7 @@ def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[
         raster_epsg = src.crs.to_epsg()
         geom_raster = reproject_geometry(geom_4326, from_epsg=4326, to_epsg=raster_epsg)
         nodata_fill = int(src.nodata) if src.nodata is not None else 0
-
-        masked, transform = rasterio_mask(
+        masked, _ = rasterio_mask(
             src,
             [geom_raster.__geo_interface__],
             crop=True,
@@ -99,19 +87,15 @@ def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[
             filled=True,
         )
 
-    band = masked[0]  # (H, W) uint8 land-cover codes
-
-    # Map class codes → RGBA
+    band = masked[0]
     h, w = band.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
     for code, colour in _PALETTE.items():
-        mask = band == code
-        rgba[mask] = colour
-    # Pixels with codes outside the palette (shouldn't happen but defensive)
-    unknown_mask = np.ones((h, w), dtype=bool)
+        rgba[band == code] = colour
+    unknown = np.ones((h, w), dtype=bool)
     for code in _PALETTE:
-        unknown_mask &= band != code
-    rgba[unknown_mask] = _UNKNOWN_RGBA
+        unknown &= band != code
+    rgba[unknown] = _UNKNOWN_RGBA
 
     img = Image.fromarray(rgba, mode="RGBA")
     buf = io.BytesIO()
@@ -119,25 +103,157 @@ def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[
     return buf.getvalue(), list(bounds)
 
 
-@router.api_route("/{municipality_id}/landcover/{year}.png", methods=["GET", "HEAD"])
-async def landcover_png(
+def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[bytes, list[float]]:
+    """Fetch municipality geometry from DB then render."""
+    from sqlalchemy import create_engine, text as stext
+
+    raw_url = settings.database_url
+    suffix = raw_url.split("://", 1)[1]
+    sync_url = f"postgresql+psycopg2://{suffix}"
+    engine = create_engine(sync_url, pool_size=1, max_overflow=0)
+    with engine.connect() as conn:
+        row = conn.execute(
+            stext("SELECT ST_AsGeoJSON(geom) AS g FROM municipalities WHERE id = :id"),
+            {"id": municipality_id},
+        ).first()
+    engine.dispose()
+    if row is None:
+        raise ValueError(f"Municipality '{municipality_id}' not found")
+    return _render_png_from_geojson(row.g, year, dataset_version)
+
+
+def _fetch_union_geojson(sql: str, params: dict) -> str:
+    """Run a ST_Union query synchronously and return the GeoJSON string."""
+    from sqlalchemy import create_engine, text as stext
+
+    raw_url = settings.database_url
+    suffix = raw_url.split("://", 1)[1]
+    sync_url = f"postgresql+psycopg2://{suffix}"
+    engine = create_engine(sync_url, pool_size=1, max_overflow=0)
+    with engine.connect() as conn:
+        row = conn.execute(stext(sql), params).first()
+    engine.dispose()
+    if row is None or row.g is None:
+        raise ValueError("No geometry found")
+    return row.g
+
+
+def _render_change_png(
+    geom_json: str,
+    from_year: int,
+    to_year: int,
+    dataset_version: str,
+) -> tuple[bytes, list[float]]:
+    """Render change-detection overlay: unchanged = transparent; changed = destination class colour."""
+    import rasterio
+    from rasterio.mask import mask as rasterio_mask
+    from shapely.geometry import shape
+    from PIL import Image
+
+    geom_4326 = shape(json.loads(geom_json))
+    bounds = geom_4326.bounds
+
+    def _mask(year: int):
+        cog = Path(settings.object_store_path) / "landcover" / dataset_version / f"{year}.tif"
+        if not cog.exists():
+            raise FileNotFoundError(f"COG not found: {cog}")
+        with rasterio.open(cog) as src:
+            raster_epsg = src.crs.to_epsg()
+            geom_r = reproject_geometry(geom_4326, from_epsg=4326, to_epsg=raster_epsg)
+            nodata_fill = int(src.nodata) if src.nodata is not None else 0
+            masked, _ = rasterio_mask(
+                src, [geom_r.__geo_interface__],
+                crop=True, all_touched=False, nodata=nodata_fill, filled=True,
+            )
+        return masked[0], nodata_fill
+
+    band_from, nodata_f = _mask(from_year)
+    band_to,   nodata_t = _mask(to_year)
+
+    if band_from.shape != band_to.shape:
+        # resize to_year to match from_year
+        from PIL import Image as _PIL
+        img_to = _PIL.fromarray(band_to.astype(np.uint8))
+        img_to = img_to.resize((band_from.shape[1], band_from.shape[0]), _PIL.NEAREST)
+        band_to = np.array(img_to)
+
+    h, w = band_from.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+
+    valid = (band_from != nodata_f) & (band_to != nodata_t)
+    changed = valid & (band_from != band_to)
+
+    # Colour changed pixels by their destination class (with 80% opacity to overlay on basemap)
+    for code, (r, g, b, _) in _PALETTE.items():
+        if code == 0:
+            continue
+        mask = changed & (band_to == code)
+        rgba[mask] = (r, g, b, 200)
+
+    img = Image.fromarray(rgba, mode="RGBA")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=False)
+    return buf.getvalue(), list(bounds)
+
+
+# ── Shared response builder ───────────────────────────────────────────────────
+
+def _png_response(png_bytes: bytes, bounds: list[float], *, is_head: bool) -> Response:
+    west, south, east, north = bounds
+    headers = {
+        "Cache-Control": "public, max-age=3600",
+        "X-Bbox-West": str(west),
+        "X-Bbox-South": str(south),
+        "X-Bbox-East": str(east),
+        "X-Bbox-North": str(north),
+    }
+    return Response(
+        content=b"" if is_head else png_bytes,
+        media_type="image/png",
+        headers=headers,
+    )
+
+
+def _head_response(cog_path: Path) -> Response:
+    if not cog_path.exists():
+        raise HTTPException(status_code=404, detail=f"COG not found: {cog_path.name}")
+    return Response(
+        content=b"",
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600",
+                 "X-Bbox-West": "0", "X-Bbox-South": "0",
+                 "X-Bbox-East": "0", "X-Bbox-North": "0"},
+    )
+
+
+def _cog_path(dataset_version: str, year: int) -> Path:
+    return Path(settings.object_store_path) / "landcover" / dataset_version / f"{year}.tif"
+
+
+_VALID_YEARS = {2000, 2005, 2010, 2015, 2020}
+
+
+async def _validate_year(year: int) -> None:
+    if year not in _VALID_YEARS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Year {year} not in dataset (valid: {sorted(_VALID_YEARS)})",
+        )
+
+
+# ── Municipality land-cover PNG ───────────────────────────────────────────────
+
+@router.api_route(
+    "/municipalities/{municipality_id}/landcover/{year}.png",
+    methods=["GET", "HEAD"],
+)
+async def municipality_landcover_png(
     request: Request,
     municipality_id: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Return a clipped, colour-mapped RGBA PNG for the given municipality and year.
-
-    Supports both GET (full render) and HEAD (headers only, no render).
-    MapLibre GL JS v3 sends a HEAD preflight before updateImage(); responding
-    correctly to HEAD is required for year-switch to work.
-
-    Response headers expose the geographic bounding box so the frontend can
-    place the image precisely as a MapLibre image-source overlay:
-        X-Bbox-West, X-Bbox-South, X-Bbox-East, X-Bbox-North
-    """
-    # Validate municipality exists
     result = await db.execute(
         text("SELECT id FROM municipalities WHERE id = :id"),
         {"id": municipality_id},
@@ -145,46 +261,167 @@ async def landcover_png(
     if result.first() is None:
         raise HTTPException(status_code=404, detail=f"Municipality '{municipality_id}' not found")
 
-    valid_years = {2000, 2005, 2010, 2015, 2020}
-    if year not in valid_years:
-        raise HTTPException(status_code=404, detail=f"Year {year} not in dataset (valid: {sorted(valid_years)})")
+    await _validate_year(year)
 
-    # HEAD: validate existence cheaply without rendering the PNG
     if request.method == "HEAD":
-        cog = Path(settings.object_store_path) / "landcover" / dataset_version / f"{year}.tif"
-        if not cog.exists():
-            raise HTTPException(status_code=404, detail=f"COG not found for year {year}")
-        return Response(
-            content=b"",
-            media_type="image/png",
-            headers={
-                "Cache-Control": "public, max-age=3600",
-                "X-Bbox-West": "0", "X-Bbox-South": "0",
-                "X-Bbox-East": "0", "X-Bbox-North": "0",
-            },
-        )
+        return _head_response(_cog_path(dataset_version, year))
 
-    # GET: render PNG
     try:
         loop = asyncio.get_event_loop()
-        png_bytes, bbox = await loop.run_in_executor(
-            None,
-            partial(_render_png, municipality_id, year, dataset_version),
+        png_bytes, bounds = await loop.run_in_executor(
+            None, partial(_render_png, municipality_id, year, dataset_version)
         )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    west, south, east, north = bbox
-    return Response(
-        content=png_bytes,
-        media_type="image/png",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "X-Bbox-West":  str(west),
-            "X-Bbox-South": str(south),
-            "X-Bbox-East":  str(east),
-            "X-Bbox-North": str(north),
-        },
+    return _png_response(png_bytes, bounds, is_head=False)
+
+
+# ── Municipality change-detection overlay PNG ─────────────────────────────────
+
+@router.api_route(
+    "/municipalities/{municipality_id}/landcover/change/{from_year}-{to_year}.png",
+    methods=["GET", "HEAD"],
+)
+async def municipality_change_png(
+    request: Request,
+    municipality_id: str,
+    from_year: int,
+    to_year: int,
+    dataset_version: str = Query(default="landcover-v3.1"),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    result = await db.execute(
+        text("SELECT ST_AsGeoJSON(geom) AS g FROM municipalities WHERE id = :id"),
+        {"id": municipality_id},
     )
+    row = result.mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Municipality '{municipality_id}' not found")
+
+    await _validate_year(from_year)
+    await _validate_year(to_year)
+
+    if request.method == "HEAD":
+        return _head_response(_cog_path(dataset_version, from_year))
+
+    geom_json = json.dumps(row["g"])
+
+    try:
+        loop = asyncio.get_event_loop()
+        png_bytes, bounds = await loop.run_in_executor(
+            None, partial(_render_change_png, geom_json, from_year, to_year, dataset_version)
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return _png_response(png_bytes, bounds, is_head=False)
+
+
+# ── Province land-cover PNG ───────────────────────────────────────────────────
+
+@router.api_route(
+    "/provinces/{province_name}/landcover/{year}.png",
+    methods=["GET", "HEAD"],
+)
+async def province_landcover_png(
+    request: Request,
+    province_name: str,
+    year: int,
+    dataset_version: str = Query(default="landcover-v3.1"),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    row = (await db.execute(
+        text("SELECT ST_AsGeoJSON(ST_Union(geom)) AS g FROM municipalities WHERE province = :p"),
+        {"p": province_name},
+    )).mappings().first()
+    if row is None or row["g"] is None:
+        raise HTTPException(status_code=404, detail=f"Province '{province_name}' not found")
+
+    await _validate_year(year)
+
+    if request.method == "HEAD":
+        return _head_response(_cog_path(dataset_version, year))
+
+    geom_json = json.dumps(row["g"])
+    try:
+        loop = asyncio.get_event_loop()
+        png_bytes, bounds = await loop.run_in_executor(
+            None, partial(_render_png_from_geojson, geom_json, year, dataset_version)
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return _png_response(png_bytes, bounds, is_head=False)
+
+
+# ── District land-cover PNG ───────────────────────────────────────────────────
+
+@router.api_route(
+    "/districts/{district_name}/landcover/{year}.png",
+    methods=["GET", "HEAD"],
+)
+async def district_landcover_png(
+    request: Request,
+    district_name: str,
+    year: int,
+    dataset_version: str = Query(default="landcover-v3.1"),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    row = (await db.execute(
+        text("SELECT ST_AsGeoJSON(ST_Union(geom)) AS g FROM municipalities WHERE district = :d"),
+        {"d": district_name},
+    )).mappings().first()
+    if row is None or row["g"] is None:
+        raise HTTPException(status_code=404, detail=f"District '{district_name}' not found")
+
+    await _validate_year(year)
+
+    if request.method == "HEAD":
+        return _head_response(_cog_path(dataset_version, year))
+
+    geom_json = json.dumps(row["g"])
+    try:
+        loop = asyncio.get_event_loop()
+        png_bytes, bounds = await loop.run_in_executor(
+            None, partial(_render_png_from_geojson, geom_json, year, dataset_version)
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return _png_response(png_bytes, bounds, is_head=False)
+
+
+# ── Country land-cover PNG ────────────────────────────────────────────────────
+
+@router.api_route(
+    "/country/landcover/{year}.png",
+    methods=["GET", "HEAD"],
+)
+async def country_landcover_png(
+    request: Request,
+    year: int,
+    dataset_version: str = Query(default="landcover-v3.1"),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    row = (await db.execute(
+        text("SELECT ST_AsGeoJSON(ST_Union(geom)) AS g FROM municipalities"),
+    )).mappings().first()
+    if row is None or row["g"] is None:
+        raise HTTPException(status_code=404, detail="No municipality data found")
+
+    await _validate_year(year)
+
+    if request.method == "HEAD":
+        return _head_response(_cog_path(dataset_version, year))
+
+    geom_json = json.dumps(row["g"])
+    try:
+        loop = asyncio.get_event_loop()
+        png_bytes, bounds = await loop.run_in_executor(
+            None, partial(_render_png_from_geojson, geom_json, year, dataset_version)
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return _png_response(png_bytes, bounds, is_head=False)
