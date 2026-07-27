@@ -18,9 +18,9 @@ import { api } from "@/lib/api";
 import { useJobStream } from "@/lib/sse";
 import {
   ANALYSIS_YEARS,
-  CLASS_NAMES,
   DEFAULT_BOUNDARY_VERSION,
   DEFAULT_DATASET_VERSION,
+  FOREST_CODES,
 } from "@/lib/constants";
 import type { ChangeMatrix, CustomClassGroup, JobResult, LandCoverStatistics, Municipality } from "@/types/api";
 
@@ -283,16 +283,12 @@ export default function MunicipalityPage() {
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* KPI summary row */}
               {displayStats && (() => {
-                const top = [...displayStats.classes]
-                  .filter((c) => c.code !== 0)
-                  .sort((a, b) => b.area_km2 - a.area_km2)[0];
-                const totalKm2 = displayStats.classes
-                  .filter((c) => c.code !== 0)
-                  .reduce((s, c) => s + c.area_km2, 0);
-                const biggestNetChange = changeMatrix
-                  ? [...changeMatrix.net_change]
-                      .filter((n) => Math.abs(n.delta_km2) > 0.01)
-                      .sort((a, b) => Math.abs(b.delta_km2) - Math.abs(a.delta_km2))[0]
+                const valid = displayStats.classes.filter((c) => c.code !== 0 && c.area_km2 > 0);
+                const totalKm2    = valid.reduce((s, c) => s + c.area_km2, 0);
+                const forestKm2   = valid.filter((c) =>  FOREST_CODES.has(c.code)).reduce((s, c) => s + c.area_km2, 0);
+                const forestPct   = totalKm2 > 0 ? (forestKm2 / totalKm2) * 100 : 0;
+                const forestDelta = changeMatrix
+                  ? changeMatrix.net_change.filter((n) => FOREST_CODES.has(n.code)).reduce((s, n) => s + n.delta_km2, 0)
                   : null;
                 return (
                   <div className="grid grid-cols-3 gap-3">
@@ -305,25 +301,26 @@ export default function MunicipalityPage() {
                       <p className="text-[10px] text-gray-400 mt-1">{displayYear}</p>
                     </div>
                     <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Dominant type</p>
-                      <p className="text-sm font-bold text-gray-900 leading-tight">
-                        {top ? (CLASS_NAMES[top.code] ?? top.name) : "—"}
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Forest cover</p>
+                      <p className="text-xl font-bold text-emerald-700 tabular-nums leading-tight">
+                        {forestPct.toFixed(1)}
+                        <span className="text-sm font-normal text-gray-400 ml-0.5">%</span>
                       </p>
                       <p className="text-[10px] text-gray-400 mt-1">
-                        {top ? `${top.share_pct.toFixed(1)}% of total` : ""}
+                        {forestKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
                       </p>
                     </div>
                     <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Biggest change</p>
-                      {biggestNetChange ? (
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Forest change</p>
+                      {forestDelta != null ? (
                         <>
-                          <p className={`text-sm font-bold leading-tight ${biggestNetChange.delta_km2 > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                            {biggestNetChange.delta_km2 > 0 ? "+" : ""}
-                            {biggestNetChange.delta_km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+                          <p className={`text-xl font-bold tabular-nums leading-tight ${forestDelta > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                            {forestDelta > 0 ? "+" : ""}
+                            {forestDelta.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            <span className="text-sm font-normal text-gray-400 ml-1">km²</span>
                           </p>
                           <p className="text-[10px] text-gray-400 mt-1">
-                            {CLASS_NAMES[biggestNetChange.code] ?? biggestNetChange.class_name}
-                            {" · "}{changeMatrix!.from_year}–{changeMatrix!.to_year}
+                            {changeMatrix!.from_year}–{changeMatrix!.to_year}
                           </p>
                         </>
                       ) : (

@@ -1,6 +1,6 @@
 "use client";
 
-import { CLASS_COLOURS, CLASS_NAMES } from "@/lib/constants";
+import { FOREST_CODES, FOREST_COLOUR, NON_FOREST_COLOUR } from "@/lib/constants";
 import type { ChangeMatrix } from "@/types/api";
 
 interface Props {
@@ -10,11 +10,29 @@ interface Props {
 export function NetChangeTable({ matrix }: Props) {
   if (!matrix.net_change.length) return null;
 
-  const entries = [...matrix.net_change]
-    .filter((n) => Math.abs(n.delta_km2) > 0.01)
-    .sort((a, b) => b.delta_km2 - a.delta_km2);
+  const forestDeltaKm2    = matrix.net_change.filter((n) =>  FOREST_CODES.has(n.code)).reduce((s, n) => s + n.delta_km2, 0);
+  const nonForestDeltaKm2 = matrix.net_change.filter((n) => !FOREST_CODES.has(n.code)).reduce((s, n) => s + n.delta_km2, 0);
 
-  const maxAbs = Math.max(...entries.map((n) => Math.abs(n.delta_km2)), 1);
+  // Weighted average CAGR for forest codes
+  const forestCagr = (() => {
+    if (!matrix.cagr?.length) return null;
+    const entries = matrix.cagr.filter((e) => FOREST_CODES.has(e.code) && Math.abs(e.cagr_pct) > 0);
+    if (!entries.length) return null;
+    return entries.reduce((s, e) => s + e.cagr_pct, 0) / entries.length;
+  })();
+  const nonForestCagr = (() => {
+    if (!matrix.cagr?.length) return null;
+    const entries = matrix.cagr.filter((e) => !FOREST_CODES.has(e.code) && Math.abs(e.cagr_pct) > 0);
+    if (!entries.length) return null;
+    return entries.reduce((s, e) => s + e.cagr_pct, 0) / entries.length;
+  })();
+
+  const rows = [
+    { label: "Forest Area",     colour: FOREST_COLOUR,     delta: forestDeltaKm2,    cagr: forestCagr },
+    { label: "Non-Forest Area", colour: NON_FOREST_COLOUR, delta: nonForestDeltaKm2, cagr: nonForestCagr },
+  ];
+
+  const maxAbs = Math.max(...rows.map((r) => Math.abs(r.delta)), 1);
 
   return (
     <div className="space-y-3">
@@ -23,30 +41,24 @@ export function NetChangeTable({ matrix }: Props) {
       </h3>
 
       <div className="space-y-2">
-        {entries.map((nc) => {
-          const isGain   = nc.delta_km2 > 0;
-          const name     = CLASS_NAMES[nc.code] ?? nc.class_name;
-          const colour   = CLASS_COLOURS[nc.code] ?? "#ccc";
-          const barW     = (Math.abs(nc.delta_km2) / maxAbs) * 100;
+        {rows.map(({ label, colour, delta, cagr }) => {
+          const isGain   = delta > 0;
+          const barW     = (Math.abs(delta) / maxAbs) * 100;
           const sign     = isGain ? "+" : "−";
           const textCls  = isGain ? "text-emerald-700" : "text-red-600";
           const barColor = isGain ? "#10b981" : "#ef4444";
 
           return (
-            <div key={nc.code}>
+            <div key={label}>
               <div className="flex items-center justify-between mb-0.5">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: colour }} />
-                  <span className="text-xs text-gray-700 truncate">{name}</span>
+                  <span className="text-xs text-gray-700 truncate">{label}</span>
                 </div>
                 <span className={`text-xs tabular-nums font-medium shrink-0 ml-2 ${textCls}`}>
-                  {sign}{Math.abs(nc.delta_km2).toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
-                  <span className="text-gray-400 font-normal ml-1">
-                    ({sign}{Math.abs(nc.delta_pct).toFixed(1)}%)
-                  </span>
+                  {sign}{Math.abs(delta).toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
                 </span>
               </div>
-              {/* Bar — grows from centre */}
               <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-500"
@@ -54,37 +66,15 @@ export function NetChangeTable({ matrix }: Props) {
                            marginLeft: isGain ? 0 : `${100 - barW}%` }}
                 />
               </div>
+              {cagr != null && (
+                <p className={`text-[10px] mt-0.5 ${cagr > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  CAGR: {cagr > 0 ? "+" : ""}{cagr.toFixed(2)}%/yr
+                </p>
+              )}
             </div>
           );
         })}
       </div>
-
-      {/* CAGR — always visible, collapsed into compact rows */}
-      {matrix.cagr && matrix.cagr.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-            Annual growth rate (CAGR)
-          </p>
-          <div className="space-y-0.5">
-            {matrix.cagr
-              .filter((e) => Math.abs(e.cagr_pct) > 0.01)
-              .sort((a, b) => Math.abs(b.cagr_pct) - Math.abs(a.cagr_pct))
-              .map((entry) => {
-                const isPos = entry.cagr_pct > 0;
-                return (
-                  <div key={entry.code} className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 truncate">
-                      {CLASS_NAMES[entry.code] ?? entry.class_name}
-                    </span>
-                    <span className={`text-xs tabular-nums ${isPos ? "text-emerald-600" : "text-red-500"}`}>
-                      {isPos ? "+" : ""}{entry.cagr_pct.toFixed(2)}%/yr
-                    </span>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -164,7 +164,7 @@ export function LandCoverMap({
       id: LAYER_ID, type: "raster", source: SOURCE_ID,
       paint: { "raster-opacity": 1.0 },
     }, "boundary-line"); // insert below boundary so outline stays on top
-  }, [currentYear, forestView]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-play ────────────────────────────────────────────────────────────
   useEffect(() => {

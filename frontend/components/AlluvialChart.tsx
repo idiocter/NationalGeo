@@ -3,30 +3,12 @@
 import { useMemo } from "react";
 import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
 
-import { CLASS_COLOURS, CLASS_NAMES } from "@/lib/constants";
+import { FOREST_CODES, FOREST_COLOUR, NON_FOREST_COLOUR } from "@/lib/constants";
 import type { ChangeMatrix, CustomClassGroup } from "@/types/api";
 
 interface Props {
   change: ChangeMatrix;
   customGroups?: CustomClassGroup[] | null;
-}
-
-const MIN_AREA_KM2 = 0.5; // filter out very trivial transitions
-
-function resolveLabel(code: number, customGroups?: CustomClassGroup[] | null): string {
-  if (customGroups) {
-    const grp = customGroups.find((g) => g.codes.includes(code));
-    if (grp) return grp.name;
-  }
-  return CLASS_NAMES[code] ?? `Class ${code}`;
-}
-
-function resolveColor(code: number, customGroups?: CustomClassGroup[] | null): string {
-  if (customGroups) {
-    const grp = customGroups.find((g) => g.codes.includes(code));
-    if (grp) return grp.color;
-  }
-  return CLASS_COLOURS[code] ?? "#999";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,12 +47,11 @@ function CustomLink({ sourceX, targetX, sourceY, sourceControlX, targetControlX,
      ${sourceX},${sourceY - linkWidth / 2}
     Z
   `;
-  const isMajor = payload?.priority_flag;
   return (
     <path
       d={d}
       fill={payload?.sourceColor ?? "#94a3b8"}
-      fillOpacity={isMajor ? 0.55 : 0.28}
+      fillOpacity={0.45}
       stroke={payload?.sourceColor ?? "#94a3b8"}
       strokeOpacity={0.3}
       strokeWidth={0.5}
@@ -83,23 +64,14 @@ function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
-
   if (d.sourceLabel) {
-    // link
     return (
       <div className="bg-white border border-gray-200 rounded-xl shadow-md p-3 text-xs min-w-[180px]">
         <p className="font-semibold text-gray-800 mb-1">{d.sourceLabel} → {d.targetLabel}</p>
         <p className="text-gray-600">{d.area_km2?.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²</p>
-        {d.pct_of_source != null && (
-          <p className="text-gray-400">{d.pct_of_source.toFixed(1)}% of source class</p>
-        )}
-        {d.priority_flag && (
-          <p className="text-amber-600 mt-1 font-medium">Priority transition</p>
-        )}
       </div>
     );
   }
-  // node
   return (
     <div className="bg-white border border-gray-200 rounded-xl shadow-md p-3 text-xs">
       <p className="font-semibold text-gray-800">{d.label}</p>
@@ -110,75 +82,48 @@ function CustomTooltip({ active, payload }: any) {
   );
 }
 
-export function AlluvialChart({ change, customGroups }: Props) {
-  const { nodes, links } = useMemo(() => {
-    const transitions = change.transitions
-      .filter((t) => t.from_code !== t.to_code && t.area_km2 >= MIN_AREA_KM2)
-      .sort((a, b) => b.area_km2 - a.area_km2);
+export function AlluvialChart({ change }: Props) {
+  const { nodes, links, forestLoss, forestGain } = useMemo(() => {
+    // Aggregate transitions into binary forest/non-forest flows
+    let forestToForest    = 0;
+    let forestToNon       = 0; // forest loss
+    let nonToForest       = 0; // forest gain
+    let nonToNon          = 0;
 
-    if (transitions.length === 0) return { nodes: [], links: [] };
+    for (const t of change.transitions) {
+      if (t.from_code === t.to_code) continue;
+      const fromForest = FOREST_CODES.has(t.from_code);
+      const toForest   = FOREST_CODES.has(t.to_code);
+      if (fromForest && toForest)   forestToForest += t.area_km2;
+      else if (fromForest)          forestToNon    += t.area_km2;
+      else if (toForest)            nonToForest    += t.area_km2;
+      else                          nonToNon       += t.area_km2;
+    }
 
-    const fromCodes = [...new Set(transitions.map((t) => t.from_code))].sort();
-    const toCodes   = [...new Set(transitions.map((t) => t.to_code))].sort();
+    // Nodes: [0] Forest from, [1] Non-Forest from, [2] Forest to, [3] Non-Forest to
+    const allNodes = [
+      { name: `Forest (${change.from_year})`,     label: "Forest Area",     color: FOREST_COLOUR,     side: "source" },
+      { name: `Non-Forest (${change.from_year})`, label: "Non-Forest Area", color: NON_FOREST_COLOUR, side: "source" },
+      { name: `Forest (${change.to_year})`,       label: "Forest Area",     color: FOREST_COLOUR,     side: "target" },
+      { name: `Non-Forest (${change.to_year})`,   label: "Non-Forest Area", color: NON_FOREST_COLOUR, side: "target" },
+    ];
 
-    // Deduplicate codes that appear on both sides
-    const sourceNodes = fromCodes.map((code) => ({
-      name: `${resolveLabel(code, customGroups)} (${change.from_year})`,
-      label: resolveLabel(code, customGroups),
-      color: resolveColor(code, customGroups),
-      code,
-      side: "source" as const,
-    }));
+    const sankeyLinks = [];
+    if (forestToForest > 0.01) sankeyLinks.push({ source: 0, target: 2, value: forestToForest, area_km2: forestToForest, sourceLabel: "Forest Area",     targetLabel: "Forest Area",     sourceColor: FOREST_COLOUR });
+    if (forestToNon    > 0.01) sankeyLinks.push({ source: 0, target: 3, value: forestToNon,    area_km2: forestToNon,    sourceLabel: "Forest Area",     targetLabel: "Non-Forest Area", sourceColor: FOREST_COLOUR });
+    if (nonToForest    > 0.01) sankeyLinks.push({ source: 1, target: 2, value: nonToForest,    area_km2: nonToForest,    sourceLabel: "Non-Forest Area", targetLabel: "Forest Area",     sourceColor: NON_FOREST_COLOUR });
+    if (nonToNon       > 0.01) sankeyLinks.push({ source: 1, target: 3, value: nonToNon,       area_km2: nonToNon,       sourceLabel: "Non-Forest Area", targetLabel: "Non-Forest Area", sourceColor: NON_FOREST_COLOUR });
 
-    const targetNodes = toCodes.map((code) => ({
-      name: `${resolveLabel(code, customGroups)} (${change.to_year})`,
-      label: resolveLabel(code, customGroups),
-      color: resolveColor(code, customGroups),
-      code,
-      side: "target" as const,
-    }));
+    return { nodes: allNodes, links: sankeyLinks, forestLoss: forestToNon, forestGain: nonToForest };
+  }, [change]);
 
-    const allNodes = [...sourceNodes, ...targetNodes];
-    const sourceOffset = 0;
-    const targetOffset = sourceNodes.length;
-
-    const sankeyLinks = transitions.map((t) => {
-      const srcIdx = fromCodes.indexOf(t.from_code) + sourceOffset;
-      const tgtIdx = toCodes.indexOf(t.to_code) + targetOffset;
-      return {
-        source: srcIdx,
-        target: tgtIdx,
-        value: Math.max(t.area_km2, 0.01),
-        area_km2: t.area_km2,
-        pct_of_source: t.pct_of_source,
-        priority_flag: t.priority_flag,
-        sourceLabel: resolveLabel(t.from_code, customGroups),
-        targetLabel: resolveLabel(t.to_code, customGroups),
-        sourceColor: resolveColor(t.from_code, customGroups),
-      };
-    });
-
-    return { nodes: allNodes, links: sankeyLinks };
-  }, [change, customGroups]);
-
-  // Stats derived from the same filtered set the Sankey actually renders
-  const visibleTransitions = change.transitions.filter(
-    (t) => t.from_code !== t.to_code && t.area_km2 >= MIN_AREA_KM2
-  );
-  const majorCount  = visibleTransitions.filter((t) => t.priority_flag).length;
-  const totalChanged = visibleTransitions.reduce((s, t) => s + t.area_km2, 0);
-
-  // Height based on the taller column (source or target), not the total node count
-  const tallestSide = Math.max(
-    new Set(visibleTransitions.map((t) => t.from_code)).size,
-    new Set(visibleTransitions.map((t) => t.to_code)).size,
-  );
-
-  if (nodes.length === 0) {
+  if (links.length === 0) {
     return (
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-800">Land Cover Transitions ({change.from_year} → {change.to_year})</h3>
-        <p className="text-xs text-gray-400">No significant transitions detected above {MIN_AREA_KM2} km².</p>
+        <h3 className="text-sm font-semibold text-gray-800">
+          Forest Transitions ({change.from_year} → {change.to_year})
+        </h3>
+        <p className="text-xs text-gray-400">No significant transitions detected.</p>
       </div>
     );
   }
@@ -187,86 +132,44 @@ export function AlluvialChart({ change, customGroups }: Props) {
     <div className="space-y-3">
       <div>
         <h3 className="text-sm font-semibold text-gray-800">
-          Land Cover Transitions — {change.from_year} → {change.to_year}
+          Forest Transitions — {change.from_year} → {change.to_year}
         </h3>
         <p className="text-xs text-gray-400 mt-0.5">
-          Total area changed: {totalChanged.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
-          {" · "}{majorCount} priority transitions
-          {" · "} flows ≥ {MIN_AREA_KM2} km² shown
+          <span className="text-red-500">Forest loss: {forestLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</span>
+          {" · "}
+          <span className="text-emerald-600">Forest gain: {forestGain.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</span>
         </p>
       </div>
 
-      <ResponsiveContainer width="100%" height={Math.max(260, tallestSide * 44)}>
+      <ResponsiveContainer width="100%" height={200}>
         <Sankey
           data={{ nodes, links }}
-          nodePadding={8}
+          nodePadding={16}
           nodeWidth={14}
-          iterations={64}
+          iterations={0}
           node={<CustomNode />}
           link={<CustomLink />}
-          margin={{ top: 8, right: 120, left: 120, bottom: 8 }}
+          margin={{ top: 8, right: 130, left: 130, bottom: 8 }}
         >
           <Tooltip content={<CustomTooltip />} />
         </Sankey>
       </ResponsiveContainer>
 
-      {/* CSV-style data table for major transitions */}
-      <div>
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-          Major transitions (≥ 5 km²)
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-1 pr-3 font-semibold text-gray-500">From</th>
-                <th className="text-left py-1 pr-3 font-semibold text-gray-500">To</th>
-                <th className="text-right py-1 pr-3 font-semibold text-gray-500">Area km²</th>
-                <th className="text-right py-1 font-semibold text-gray-500">% of Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {change.transitions
-                .filter((t) => t.from_code !== t.to_code && t.area_km2 >= 5)
-                .sort((a, b) => b.area_km2 - a.area_km2)
-                .slice(0, 12)
-                .map((t, i) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-1 pr-3">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: resolveColor(t.from_code, customGroups) }} />
-                        {resolveLabel(t.from_code, customGroups)}
-                      </span>
-                    </td>
-                    <td className="py-1 pr-3">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: resolveColor(t.to_code, customGroups) }} />
-                        {resolveLabel(t.to_code, customGroups)}
-                      </span>
-                    </td>
-                    <td className="py-1 pr-3 text-right tabular-nums text-gray-700">
-                      {t.area_km2.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                    </td>
-                    <td className={`py-1 text-right tabular-nums ${t.priority_flag ? "text-amber-600 font-semibold" : "text-gray-500"}`}>
-                      {t.pct_of_source.toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+          <p className="text-[10px] font-semibold text-red-500 uppercase tracking-wide mb-0.5">Forest Lost</p>
+          <p className="text-sm font-bold text-red-700 tabular-nums">
+            {forestLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+          </p>
+          <p className="text-[10px] text-red-400">converted to non-forest</p>
         </div>
-
-        {/* Minor transitions summary */}
-        {(() => {
-          const minor = change.transitions.filter((t) => t.from_code !== t.to_code && t.area_km2 > 0 && t.area_km2 < 5);
-          if (!minor.length) return null;
-          const minorTotal = minor.reduce((s, t) => s + t.area_km2, 0);
-          return (
-            <p className="text-[10px] text-gray-400 mt-1.5">
-              + {minor.length} minor transitions totalling {minorTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} km² (each &lt; 5 km²)
-            </p>
-          );
-        })()}
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+          <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide mb-0.5">Forest Gained</p>
+          <p className="text-sm font-bold text-emerald-700 tabular-nums">
+            {forestGain.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+          </p>
+          <p className="text-[10px] text-emerald-400">recovered from non-forest</p>
+        </div>
       </div>
 
       <p className="text-[10px] text-gray-400">

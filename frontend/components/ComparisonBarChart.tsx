@@ -12,18 +12,19 @@ import {
   YAxis,
 } from "recharts";
 
-import { CLASS_COLOURS, CLASS_NAMES } from "@/lib/constants";
+import { FOREST_CODES, FOREST_COLOUR, NON_FOREST_COLOUR } from "@/lib/constants";
 import type { LandCoverStatistics } from "@/types/api";
 
 interface Props {
   statistics: LandCoverStatistics[];
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
+function agg(stat: LandCoverStatistics) {
+  const valid = stat.classes.filter((c) => c.code !== 0 && c.area_km2 > 0);
+  return {
+    forest:    valid.filter((c) =>  FOREST_CODES.has(c.code)).reduce((s, c) => s + c.area_km2, 0),
+    nonForest: valid.filter((c) => !FOREST_CODES.has(c.code)).reduce((s, c) => s + c.area_km2, 0),
+  };
 }
 
 function CustomTooltip({ active, payload, label }: {
@@ -57,6 +58,8 @@ function CustomTooltip({ active, payload, label }: {
   );
 }
 
+const COLOURS = [FOREST_COLOUR, NON_FOREST_COLOUR];
+
 export function ComparisonBarChart({ statistics }: Props) {
   if (statistics.length < 2) return null;
 
@@ -64,25 +67,13 @@ export function ComparisonBarChart({ statistics }: Props) {
   const baseYear   = sorted[0];
   const latestYear = sorted[sorted.length - 1];
 
-  const baseCodes   = new Set(baseYear.classes.filter((c) => c.code !== 0).map((c) => c.code));
-  const latestCodes = new Set(latestYear.classes.filter((c) => c.code !== 0).map((c) => c.code));
-  const allCodes    = Array.from(new Set([...baseCodes, ...latestCodes])).sort((a, b) => a - b);
+  const base   = agg(baseYear);
+  const latest = agg(latestYear);
 
-  const baseByCode   = Object.fromEntries(baseYear.classes.map((c) => [c.code, c.area_km2]));
-  const latestByCode = Object.fromEntries(latestYear.classes.map((c) => [c.code, c.area_km2]));
-
-  const data = allCodes
-    .filter((code) => {
-      const b = baseByCode[code] ?? 0;
-      const l = latestByCode[code] ?? 0;
-      return Math.max(b, l) > 0.5; // filter trivial classes
-    })
-    .map((code) => ({
-      name: CLASS_NAMES[code] ?? `Class ${code}`,
-      code,
-      [baseYear.year]:   baseByCode[code]   ?? 0,
-      [latestYear.year]: latestByCode[code] ?? 0,
-    }));
+  const data = [
+    { name: "Forest Area",     [baseYear.year]: base.forest,    [latestYear.year]: latest.forest,    colour: FOREST_COLOUR },
+    { name: "Non-Forest Area", [baseYear.year]: base.nonForest, [latestYear.year]: latest.nonForest, colour: NON_FOREST_COLOUR },
+  ];
 
   const baseKey   = String(baseYear.year);
   const latestKey = String(latestYear.year);
@@ -91,14 +82,14 @@ export function ComparisonBarChart({ statistics }: Props) {
     <div className="space-y-3">
       <div>
         <h3 className="text-sm font-semibold text-gray-800">
-          Land cover comparison: {baseYear.year} vs {latestYear.year}
+          Forest cover: {baseYear.year} vs {latestYear.year}
         </h3>
         <p className="text-xs text-gray-400 mt-0.5">
           Top bar {baseYear.year} · bottom bar {latestYear.year} · hover to see net change
         </p>
       </div>
 
-      <ResponsiveContainer width="100%" height={data.length * 36 + 40}>
+      <ResponsiveContainer width="100%" height={120}>
         <BarChart
           data={data}
           layout="vertical"
@@ -128,28 +119,15 @@ export function ComparisonBarChart({ statistics }: Props) {
             iconType="square"
             iconSize={8}
             wrapperStyle={{ fontSize: 11, color: "#6b7280", paddingTop: 8 }}
-            formatter={(value) => <span style={{ color: "#6b7280" }}>{value}</span>}
           />
-
-          {/* Base year — muted (50% opacity) */}
           <Bar dataKey={baseKey} name={String(baseYear.year)} radius={[0, 3, 3, 0]}>
-            {data.map((entry) => (
-              <Cell
-                key={entry.code}
-                fill={hexToRgba(CLASS_COLOURS[entry.code] ?? "#8884d8", 0.45)}
-                stroke={CLASS_COLOURS[entry.code] ?? "#8884d8"}
-                strokeWidth={1}
-              />
+            {data.map((entry, i) => (
+              <Cell key={i} fill={entry.colour} fillOpacity={0.4} stroke={entry.colour} strokeWidth={1} />
             ))}
           </Bar>
-
-          {/* Latest year — full colour */}
           <Bar dataKey={latestKey} name={String(latestYear.year)} radius={[0, 3, 3, 0]}>
-            {data.map((entry) => (
-              <Cell
-                key={entry.code}
-                fill={CLASS_COLOURS[entry.code] ?? "#8884d8"}
-              />
+            {data.map((entry, i) => (
+              <Cell key={i} fill={COLOURS[i]} />
             ))}
           </Bar>
         </BarChart>
