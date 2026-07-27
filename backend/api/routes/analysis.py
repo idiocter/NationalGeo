@@ -118,8 +118,13 @@ async def submit_analysis(
 
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: str, db: AsyncSession = Depends(get_session)) -> dict:
-    """Return current job status and result bundle if complete."""
-    result = await db.execute(
+    """Return current job status and result bundle if complete.
+
+    Returns a flat JobResult envelope: top-level fields from the jobs row merged
+    with the contents of result so the frontend can access statistics, artefacts,
+    etc. directly without unwrapping a nested 'result' key.
+    """
+    res = await db.execute(
         text(
             """
             SELECT id, municipality_id, status, result, error,
@@ -129,10 +134,14 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_session)) -> dict:
         ),
         {"id": job_id},
     )
-    row = result.mappings().first()
+    row = res.mappings().first()
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return dict(row)
+
+    job = dict(row)
+    nested = job.pop("result") or {}
+    # Flatten: merge result payload into the top-level response
+    return {"job_id": job["id"], "status": job["status"], **nested}
 
 
 @router.get("/jobs/{job_id}/stream")

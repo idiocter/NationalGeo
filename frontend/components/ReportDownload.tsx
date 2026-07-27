@@ -4,7 +4,8 @@ import type { JobResult } from "@/types/api";
 
 interface Props {
   result: JobResult;
-  jobId?: string;
+  pdfUrl?: string;
+  xlsxUrl?: string;
   comparisonMapUrl?: string;
   changeMapUrl?: string;
 }
@@ -50,9 +51,12 @@ const MAP_ITEMS = [
   },
 ] as const;
 
-export function ReportDownload({ result, comparisonMapUrl, changeMapUrl }: Props) {
-  if (!result.artefacts) return null;
-
+export function ReportDownload({ result, pdfUrl, xlsxUrl, comparisonMapUrl, changeMapUrl }: Props) {
+  // Always prefer explicit full URLs passed as props over relative URLs stored in artefacts
+  const reportUrls: Record<string, string | undefined> = {
+    pdf:  pdfUrl,
+    xlsx: xlsxUrl,
+  };
   const mapUrls: Record<string, string | undefined> = {
     comparisonMapUrl,
     changeMapUrl,
@@ -67,19 +71,19 @@ export function ReportDownload({ result, comparisonMapUrl, changeMapUrl }: Props
       {/* Report files */}
       <div className="grid grid-cols-2 gap-2">
         {REPORT_FORMATS.map(({ key, label, description, icon }) => {
-          const artefact = result.artefacts?.[key];
+          const url = reportUrls[key] ?? result.artefacts?.[key]?.url;
           return (
             <a
               key={key}
-              href={artefact?.url}
+              href={url}
               download
               className={`flex items-start gap-2 p-3 rounded-xl border text-left transition-colors ${
-                artefact
+                url
                   ? "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
                   : "border-gray-200 bg-gray-50 opacity-40 cursor-not-allowed pointer-events-none"
               }`}
             >
-              <span className={`mt-0.5 shrink-0 ${artefact ? "text-blue-600" : "text-gray-300"}`}>
+              <span className={`mt-0.5 shrink-0 ${url ? "text-blue-600" : "text-gray-300"}`}>
                 {icon}
               </span>
               <div>

@@ -223,8 +223,8 @@ class CartographyAgent:
                 municipality_name, job_id, change_path,
             )
 
-            artefact_urls["comparison_map"] = f"/jobs/{job_id}/maps/comparison_map.png"
-            artefact_urls["change_map"]     = f"/jobs/{job_id}/maps/change_map.png"
+            artefact_urls["comparison_map"] = {"url": f"/jobs/{job_id}/maps/comparison_map.png"}
+            artefact_urls["change_map"]     = {"url": f"/jobs/{job_id}/maps/change_map.png"}
 
         # Persist artefact URLs into jobs.result
         if artefact_urls:
