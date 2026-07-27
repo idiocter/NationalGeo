@@ -293,9 +293,16 @@ class ChangeDetectionAgent:
         )
 
         if arr_from.shape != arr_to.shape:
-            raise RuntimeError(
-                f"Array shape mismatch between {from_year} {arr_from.shape} "
-                f"and {to_year} {arr_to.shape} — grid alignment violated"
+            # COGs for different years may clip to a window that differs by ≤1 pixel.
+            # Trim both arrays to the smaller of the two dimensions so pixels remain
+            # spatially aligned (same top-left origin from rasterio.mask crop=True).
+            min_rows = min(arr_from.shape[0], arr_to.shape[0])
+            min_cols = min(arr_from.shape[1], arr_to.shape[1])
+            arr_from = arr_from[:min_rows, :min_cols]
+            arr_to   = arr_to[:min_rows,   :min_cols]
+            logger.warning(
+                "Shape mismatch %s vs %s for job %s — trimmed to (%d, %d)",
+                arr_from.shape, arr_to.shape, job_id, min_rows, min_cols,
             )
 
         transitions = _build_transition_matrix(arr_from, arr_to, pixel_area_m2)

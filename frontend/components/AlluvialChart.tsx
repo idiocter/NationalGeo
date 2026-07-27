@@ -32,14 +32,15 @@ function resolveColor(code: number, customGroups?: CustomClassGroup[] | null): s
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function CustomNode({ x, y, width, height, payload }: any) {
   if (height <= 0) return null;
-  const { color, label } = payload;
+  const { color, label, side } = payload;
+  const isSource = side === "source";
   return (
     <g>
       <rect x={x} y={y} width={width} height={Math.max(height, 2)} fill={color} rx={3} />
       <text
-        x={x < 100 ? x + width + 6 : x - 6}
+        x={isSource ? x + width + 6 : x - 6}
         y={y + height / 2}
-        textAnchor={x < 100 ? "start" : "end"}
+        textAnchor={isSource ? "start" : "end"}
         dominantBaseline="middle"
         fontSize={10}
         fill="#374151"
@@ -160,10 +161,18 @@ export function AlluvialChart({ change, customGroups }: Props) {
     return { nodes: allNodes, links: sankeyLinks };
   }, [change, customGroups]);
 
-  const majorCount = change.transitions.filter((t) => t.priority_flag && t.from_code !== t.to_code).length;
-  const totalChanged = change.transitions
-    .filter((t) => t.from_code !== t.to_code)
-    .reduce((s, t) => s + t.area_km2, 0);
+  // Stats derived from the same filtered set the Sankey actually renders
+  const visibleTransitions = change.transitions.filter(
+    (t) => t.from_code !== t.to_code && t.area_km2 >= MIN_AREA_KM2
+  );
+  const majorCount  = visibleTransitions.filter((t) => t.priority_flag).length;
+  const totalChanged = visibleTransitions.reduce((s, t) => s + t.area_km2, 0);
+
+  // Height based on the taller column (source or target), not the total node count
+  const tallestSide = Math.max(
+    new Set(visibleTransitions.map((t) => t.from_code)).size,
+    new Set(visibleTransitions.map((t) => t.to_code)).size,
+  );
 
   if (nodes.length === 0) {
     return (
@@ -187,7 +196,7 @@ export function AlluvialChart({ change, customGroups }: Props) {
         </p>
       </div>
 
-      <ResponsiveContainer width="100%" height={Math.max(260, nodes.length * 22)}>
+      <ResponsiveContainer width="100%" height={Math.max(260, tallestSide * 44)}>
         <Sankey
           data={{ nodes, links }}
           nodePadding={8}
