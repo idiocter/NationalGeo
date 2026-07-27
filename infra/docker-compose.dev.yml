@@ -1,5 +1,5 @@
-# Dev overrides — applied automatically on top of docker-compose.yml
-# Gives hot-reload on both frontend (Next.js HMR) and backend (uvicorn --reload).
+# Dev overrides — applied on top of docker-compose.yml
+# Forces filesystem polling so macOS → Docker VM file-change events are detected.
 # Production deploys use docker-compose.yml only (ignore this file).
 
 services:
@@ -10,9 +10,22 @@ services:
     command: npm run dev
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      WATCHPACK_POLLING: "true"        # Next.js HMR polling (macOS Docker fix)
+      CHOKIDAR_USEPOLLING: "true"      # fallback watcher polling
     volumes:
       - ../frontend:/app
       - /app/node_modules    # keep container's node_modules, don't overwrite with host
       - /app/.next           # keep Next.js build cache inside container
     ports:
       - "3000:3000"
+
+  backend:
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"  # uvicorn --reload polling (macOS Docker fix)
+    volumes:
+      - ../backend:/app/backend
+
+  worker:
+    volumes:
+      - ../backend:/app/backend
