@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ImageSource, Map as MapLibreMap } from "maplibre-gl";
-import { CLASS_COLOURS, CLASS_NAMES } from "@/lib/constants";
+import { CLASS_COLOURS, CLASS_NAMES, FOREST_CODES, FOREST_COLOUR, NON_FOREST_COLOUR } from "@/lib/constants";
 import { api } from "@/lib/api";
 import type { LandCoverStatistics, Municipality } from "@/types/api";
 
@@ -44,9 +44,10 @@ export function LandCoverMap({
 
   // Seek-bar index (0 … availableYears.length - 1)
   const initIdx = Math.max(0, availableYears.indexOf(year));
-  const [yearIdx, setYearIdx]   = useState(initIdx);
-  const [loading, setLoading]   = useState(true);
-  const [playing, setPlaying]   = useState(false);
+  const [yearIdx, setYearIdx]     = useState(initIdx);
+  const [loading, setLoading]     = useState(true);
+  const [playing, setPlaying]     = useState(false);
+  const [forestView, setForestView] = useState(false);
 
   const currentYear = availableYears[yearIdx] ?? year;
   const currentStats = allStats.find((s) => s.year === currentYear) ?? null;
@@ -117,7 +118,7 @@ export function LandCoverMap({
         }
 
         // Add initial land cover overlay below the boundary outline
-        const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
+        const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear, undefined, forestView ? "forest" : "standard");
         map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
         map.addLayer(
           { id: LAYER_ID, type: "raster", source: SOURCE_ID, paint: { "raster-opacity": 1.0 } },
@@ -158,13 +159,13 @@ export function LandCoverMap({
       if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
     } catch { /* ignore if already removed */ }
 
-    const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
+    const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear, undefined, forestView ? "forest" : "standard");
     map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
     map.addLayer({
       id: LAYER_ID, type: "raster", source: SOURCE_ID,
       paint: { "raster-opacity": 1.0 },
     }, "boundary-line"); // insert below boundary so outline stays on top
-  }, [currentYear]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentYear, forestView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-play ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -206,7 +207,19 @@ export function LandCoverMap({
     ? (yearIdx / (availableYears.length - 1)) * 100
     : 0;
 
-  // Legend entries: only classes actually present (area > 0) when stats are loaded
+  // Legend: binary forest/non-forest or full class breakdown
+  const forestLegend = (() => {
+    if (!currentStats) return null;
+    const valid = currentStats.classes.filter((c) => c.code !== 0 && c.area_km2 > 0);
+    const forestKm2    = valid.filter((c) => FOREST_CODES.has(c.code)).reduce((s, c) => s + c.area_km2, 0);
+    const nonForestKm2 = valid.filter((c) => !FOREST_CODES.has(c.code)).reduce((s, c) => s + c.area_km2, 0);
+    const total = forestKm2 + nonForestKm2 || 1;
+    return [
+      { label: "Forest Area",     colour: FOREST_COLOUR,     km2: forestKm2,    pct: (forestKm2 / total) * 100 },
+      { label: "Non-Forest Area", colour: NON_FOREST_COLOUR, km2: nonForestKm2, pct: (nonForestKm2 / total) * 100 },
+    ];
+  })();
+
   const legendEntries = currentStats
     ? [...currentStats.classes]
         .filter((c) => c.code !== 0 && c.area_km2 > 0)
@@ -250,32 +263,46 @@ export function LandCoverMap({
         {/* Legend — bottom-right above seek bar */}
         <div className="absolute bottom-2 right-2 z-10 bg-white
                         rounded-xl shadow-md border border-gray-200 p-2.5
-                        max-h-52 overflow-y-auto min-w-[150px]">
+                        max-h-52 overflow-y-auto min-w-[160px]">
           <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-            Land Cover · <span className="text-blue-600">{currentYear}</span>
+            {forestView ? "Forest View" : "Land Cover"} · <span className="text-blue-600">{currentYear}</span>
           </p>
           <div className="space-y-1">
-            {legendEntries.map((entry) => {
-              const code   = "code" in entry ? entry.code : Number((entry as [string,string])[0]);
-              const name   = CLASS_NAMES[code] ?? ("code" in entry ? (entry as {name:string}).name : "");
-              const share  = "share_pct" in entry ? (entry as {share_pct:number|null}).share_pct : null;
-              const colour = CLASS_COLOURS[code] ?? "#cccccc";
-              return (
-                <div key={code} className="flex items-center gap-1.5">
-                  <span
-                    className="inline-block w-3 h-3 rounded-sm shrink-0 border border-gray-300/60"
-                    style={{ backgroundColor: colour }}
-                  />
-                  <span className="text-[10px] text-gray-700 leading-tight flex-1 truncate">{name}</span>
-                  {share !== null && (
-                    <span className="text-[10px] text-gray-400 tabular-nums">{share.toFixed(1)}%</span>
-                  )}
+            {forestView ? (
+              forestLegend ? forestLegend.map(({ label, colour, km2, pct }) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 rounded-sm shrink-0 border border-gray-300/60" style={{ backgroundColor: colour }} />
+                  <span className="text-[10px] text-gray-700 leading-tight flex-1">{label}</span>
+                  <span className="text-[10px] text-gray-400 tabular-nums">{pct.toFixed(1)}%</span>
                 </div>
-              );
-            })}
+              )) : (
+                <p className="text-[10px] text-gray-400 italic">Run analysis for live data</p>
+              )
+            ) : (
+              legendEntries.map((entry) => {
+                const code   = "code" in entry ? entry.code : Number((entry as [string,string])[0]);
+                const name   = CLASS_NAMES[code] ?? ("code" in entry ? (entry as {name:string}).name : "");
+                const share  = "share_pct" in entry ? (entry as {share_pct:number|null}).share_pct : null;
+                const colour = CLASS_COLOURS[code] ?? "#cccccc";
+                return (
+                  <div key={code} className="flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-3 rounded-sm shrink-0 border border-gray-300/60" style={{ backgroundColor: colour }} />
+                    <span className="text-[10px] text-gray-700 leading-tight flex-1 truncate">{name}</span>
+                    {share !== null && (
+                      <span className="text-[10px] text-gray-400 tabular-nums">{share.toFixed(1)}%</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
-          {!currentStats && (
+          {!currentStats && !forestView && (
             <p className="text-[10px] text-gray-400 mt-1.5 italic">Run analysis for live data</p>
+          )}
+          {forestView && currentStats && forestLegend && (
+            <p className="text-[10px] text-gray-400 mt-1.5 border-t border-gray-100 pt-1.5">
+              Forest: {forestLegend[0].km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+            </p>
           )}
         </div>
       </div>
@@ -340,6 +367,24 @@ export function LandCoverMap({
               </div>
             </div>
           </div>
+
+          {/* Forest / standard toggle */}
+          <button
+            onClick={() => setForestView((v) => !v)}
+            aria-label={forestView ? "Switch to full land cover view" : "Switch to forest view"}
+            title={forestView ? "Full land cover view" : "Forest / non-forest view"}
+            className={`shrink-0 h-8 px-2.5 rounded-full border text-[10px] font-semibold
+                        flex items-center gap-1.5 transition-colors shadow-sm ${
+              forestView
+                ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
+                : "bg-white border-gray-200 text-gray-500 hover:border-emerald-400 hover:text-emerald-700"
+            }`}
+          >
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
+              <path d="M8 2L3 10h2.5v4h5v-4H13L8 2z"/>
+            </svg>
+            {forestView ? "Full View" : "Forest"}
+          </button>
 
           {/* Download current year map as PNG */}
           <button

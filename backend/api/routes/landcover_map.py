@@ -53,6 +53,22 @@ _UNKNOWN_RGBA = (128, 0, 128, 220)
 # Change-overlay colours: unchanged=transparent, changed=coloured by destination class
 _CHANGE_UNCHANGED = (0, 0, 0, 0)
 
+# Forest/non-forest binary classification
+# Forest Area = Forest + Grassland + Shrubland + Cultivated Land + Open Woodland
+_FOREST_CODES: frozenset[int] = frozenset({4, 5, 6, 7, 9})
+_FOREST_RGBA     = ( 45, 106,  79, 255)  # deep green
+_NON_FOREST_RGBA = (200, 183, 156, 255)  # warm tan
+
+
+def _apply_forest_palette(band: np.ndarray) -> np.ndarray:
+    """Return RGBA array with binary forest / non-forest classification."""
+    h, w = band.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    valid = band > 0  # exclude NoData (code 0)
+    rgba[valid & np.isin(band, list(_FOREST_CODES))] = _FOREST_RGBA
+    rgba[valid & ~np.isin(band, list(_FOREST_CODES))] = _NON_FOREST_RGBA
+    return rgba
+
 
 # ── Core rendering (geometry-first) ──────────────────────────────────────────
 
@@ -60,8 +76,13 @@ def _render_png_from_geojson(
     geom_json: str,
     year: int,
     dataset_version: str,
+    mode: str = "standard",
 ) -> tuple[bytes, list[float]]:
-    """Render land-cover PNG given a GeoJSON geometry string (EPSG:4326)."""
+    """Render land-cover PNG given a GeoJSON geometry string (EPSG:4326).
+
+    mode="standard" — full 11-class colour map
+    mode="forest"   — binary forest-area / non-forest classification
+    """
     import rasterio
     from rasterio.mask import mask as rasterio_mask
     from shapely.geometry import shape
@@ -88,14 +109,18 @@ def _render_png_from_geojson(
         )
 
     band = masked[0]
-    h, w = band.shape
-    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-    for code, colour in _PALETTE.items():
-        rgba[band == code] = colour
-    unknown = np.ones((h, w), dtype=bool)
-    for code in _PALETTE:
-        unknown &= band != code
-    rgba[unknown] = _UNKNOWN_RGBA
+
+    if mode == "forest":
+        rgba = _apply_forest_palette(band)
+    else:
+        h, w = band.shape
+        rgba = np.zeros((h, w, 4), dtype=np.uint8)
+        for code, colour in _PALETTE.items():
+            rgba[band == code] = colour
+        unknown = np.ones((h, w), dtype=bool)
+        for code in _PALETTE:
+            unknown &= band != code
+        rgba[unknown] = _UNKNOWN_RGBA
 
     img = Image.fromarray(rgba, mode="RGBA")
     buf = io.BytesIO()
@@ -103,7 +128,7 @@ def _render_png_from_geojson(
     return buf.getvalue(), list(bounds)
 
 
-def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[bytes, list[float]]:
+def _render_png(municipality_id: str, year: int, dataset_version: str, mode: str = "standard") -> tuple[bytes, list[float]]:
     """Fetch municipality geometry from DB then render."""
     from sqlalchemy import create_engine, text as stext
 
@@ -119,7 +144,7 @@ def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[
     engine.dispose()
     if row is None:
         raise ValueError(f"Municipality '{municipality_id}' not found")
-    return _render_png_from_geojson(row.g, year, dataset_version)
+    return _render_png_from_geojson(row.g, year, dataset_version, mode=mode)
 
 
 def _fetch_union_geojson(sql: str, params: dict) -> str:
@@ -252,6 +277,7 @@ async def municipality_landcover_png(
     municipality_id: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     result = await db.execute(
@@ -269,7 +295,7 @@ async def municipality_landcover_png(
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bounds = await loop.run_in_executor(
-            None, partial(_render_png, municipality_id, year, dataset_version)
+            None, partial(_render_png, municipality_id, year, dataset_version, mode)
         )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -329,6 +355,7 @@ async def province_landcover_png(
     province_name: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     row = (await db.execute(
@@ -347,7 +374,7 @@ async def province_landcover_png(
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bounds = await loop.run_in_executor(
-            None, partial(_render_png_from_geojson, geom_json, year, dataset_version)
+            None, partial(_render_png_from_geojson, geom_json, year, dataset_version, mode)
         )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -366,6 +393,7 @@ async def district_landcover_png(
     district_name: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     row = (await db.execute(
@@ -384,7 +412,7 @@ async def district_landcover_png(
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bounds = await loop.run_in_executor(
-            None, partial(_render_png_from_geojson, geom_json, year, dataset_version)
+            None, partial(_render_png_from_geojson, geom_json, year, dataset_version, mode)
         )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -402,6 +430,7 @@ async def country_landcover_png(
     request: Request,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
+    mode: str = Query(default="standard", pattern="^(standard|forest)$"),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     row = (await db.execute(
@@ -419,7 +448,7 @@ async def country_landcover_png(
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bounds = await loop.run_in_executor(
-            None, partial(_render_png_from_geojson, geom_json, year, dataset_version)
+            None, partial(_render_png_from_geojson, geom_json, year, dataset_version, mode)
         )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))

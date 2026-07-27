@@ -26,8 +26,8 @@ export const api = {
   municipalities: {
     list:   () => request<Municipality[]>("/municipalities"),
     get:    (id: string) => request<Municipality>(`/municipalities/${id}`),
-    landcoverPngUrl: (id: string, year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/municipalities/${id}/landcover/${year}.png?dataset_version=${datasetVersion}`,
+    landcoverPngUrl: (id: string, year: number, datasetVersion = "landcover-v3.1", mode: "standard" | "forest" = "standard") =>
+      `${BASE_URL}/municipalities/${id}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=${mode}`,
     changePngUrl: (id: string, fromYear: number, toYear: number, datasetVersion = "landcover-v3.1") =>
       `${BASE_URL}/municipalities/${id}/landcover/change/${fromYear}-${toYear}.png?dataset_version=${datasetVersion}`,
   },

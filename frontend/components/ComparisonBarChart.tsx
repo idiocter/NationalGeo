@@ -94,35 +94,34 @@ export function ComparisonBarChart({ statistics }: Props) {
           Land cover comparison: {baseYear.year} vs {latestYear.year}
         </h3>
         <p className="text-xs text-gray-400 mt-0.5">
-          Each class shown side-by-side — left bar ({baseYear.year}) vs right bar ({latestYear.year}) · hover to see net change
+          Top bar {baseYear.year} · bottom bar {latestYear.year} · hover to see net change
         </p>
       </div>
 
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={data.length * 36 + 40}>
         <BarChart
           data={data}
-          margin={{ top: 4, right: 12, left: 0, bottom: 40 }}
-          barCategoryGap="25%"
+          layout="vertical"
+          margin={{ top: 4, right: 48, left: 4, bottom: 4 }}
+          barCategoryGap="30%"
           barGap={2}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-          <XAxis
+          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+          <YAxis
             dataKey="name"
-            tick={{ fontSize: 10, fill: "#9ca3af" }}
+            type="category"
+            tick={{ fontSize: 10, fill: "#6b7280" }}
             axisLine={false}
             tickLine={false}
-            angle={-35}
-            textAnchor="end"
-            interval={0}
-            height={55}
+            width={110}
           />
-          <YAxis
-            tick={{ fontSize: 11, fill: "#9ca3af" }}
+          <XAxis
+            type="number"
+            tick={{ fontSize: 10, fill: "#9ca3af" }}
             axisLine={false}
             tickLine={false}
             tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
             unit=" km²"
-            width={62}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
@@ -133,7 +132,7 @@ export function ComparisonBarChart({ statistics }: Props) {
           />
 
           {/* Base year — muted (50% opacity) */}
-          <Bar dataKey={baseKey} name={String(baseYear.year)} radius={[3, 3, 0, 0]}>
+          <Bar dataKey={baseKey} name={String(baseYear.year)} radius={[0, 3, 3, 0]}>
             {data.map((entry) => (
               <Cell
                 key={entry.code}
@@ -145,7 +144,7 @@ export function ComparisonBarChart({ statistics }: Props) {
           </Bar>
 
           {/* Latest year — full colour */}
-          <Bar dataKey={latestKey} name={String(latestYear.year)} radius={[3, 3, 0, 0]}>
+          <Bar dataKey={latestKey} name={String(latestYear.year)} radius={[0, 3, 3, 0]}>
             {data.map((entry) => (
               <Cell
                 key={entry.code}
