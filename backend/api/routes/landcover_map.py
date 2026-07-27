@@ -16,7 +16,7 @@ from functools import partial
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -119,8 +119,9 @@ def _render_png(municipality_id: str, year: int, dataset_version: str) -> tuple[
     return buf.getvalue(), list(bounds)
 
 
-@router.get("/{municipality_id}/landcover/{year}.png")
+@router.api_route("/{municipality_id}/landcover/{year}.png", methods=["GET", "HEAD"])
 async def landcover_png(
+    request: Request,
     municipality_id: str,
     year: int,
     dataset_version: str = Query(default="landcover-v3.1"),
@@ -128,11 +129,15 @@ async def landcover_png(
 ) -> Response:
     """Return a clipped, colour-mapped RGBA PNG for the given municipality and year.
 
+    Supports both GET (full render) and HEAD (headers only, no render).
+    MapLibre GL JS v3 sends a HEAD preflight before updateImage(); responding
+    correctly to HEAD is required for year-switch to work.
+
     Response headers expose the geographic bounding box so the frontend can
     place the image precisely as a MapLibre image-source overlay:
         X-Bbox-West, X-Bbox-South, X-Bbox-East, X-Bbox-North
     """
-    # Validate municipality exists (fast async check)
+    # Validate municipality exists
     result = await db.execute(
         text("SELECT id FROM municipalities WHERE id = :id"),
         {"id": municipality_id},
@@ -144,6 +149,22 @@ async def landcover_png(
     if year not in valid_years:
         raise HTTPException(status_code=404, detail=f"Year {year} not in dataset (valid: {sorted(valid_years)})")
 
+    # HEAD: validate existence cheaply without rendering the PNG
+    if request.method == "HEAD":
+        cog = Path(settings.object_store_path) / "landcover" / dataset_version / f"{year}.tif"
+        if not cog.exists():
+            raise HTTPException(status_code=404, detail=f"COG not found for year {year}")
+        return Response(
+            content=b"",
+            media_type="image/png",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "X-Bbox-West": "0", "X-Bbox-South": "0",
+                "X-Bbox-East": "0", "X-Bbox-North": "0",
+            },
+        )
+
+    # GET: render PNG
     try:
         loop = asyncio.get_event_loop()
         png_bytes, bbox = await loop.run_in_executor(
@@ -160,7 +181,7 @@ async def landcover_png(
         content=png_bytes,
         media_type="image/png",
         headers={
-            "Cache-Control": "no-store",
+            "Cache-Control": "public, max-age=3600",
             "X-Bbox-West":  str(west),
             "X-Bbox-South": str(south),
             "X-Bbox-East":  str(east),

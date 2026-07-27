@@ -103,13 +103,7 @@ export function LandCoverMap({
       map.on("load", () => {
         loadedRef.current = true;
 
-        const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
-        map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
-        map.addLayer({
-          id: LAYER_ID, type: "raster", source: SOURCE_ID,
-          paint: { "raster-opacity": 1.0 },
-        });
-
+        // Add boundary outline first so the land cover layer can insert before it
         if (municipality.geometry) {
           map.addSource("boundary", {
             type: "geojson",
@@ -120,6 +114,14 @@ export function LandCoverMap({
             paint: { "line-color": "#1e293b", "line-width": 2 },
           });
         }
+
+        // Add initial land cover overlay below the boundary outline
+        const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
+        map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
+        map.addLayer(
+          { id: LAYER_ID, type: "raster", source: SOURCE_ID, paint: { "raster-opacity": 1.0 } },
+          municipality.geometry ? "boundary-line" : undefined,
+        );
 
         map.fitBounds(
           [[bbox.west, bbox.south], [bbox.east, bbox.north]],
@@ -141,15 +143,26 @@ export function LandCoverMap({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Swap land-cover overlay when year changes ────────────────────────────
+  // NOTE: MapLibre v3 sends a HEAD preflight before updateImage() — if the
+  // endpoint doesn't support HEAD the swap silently aborts.  We avoid that
+  // entirely by removing the old source/layer and re-adding with the new URL,
+  // which goes straight to a GET request with no HEAD check.
   useEffect(() => {
     if (!loadedRef.current || !mapRef.current) return;
-    const src = mapRef.current.getSource(SOURCE_ID) as ImageSource | undefined;
-    if (!src) return;
+    const map = mapRef.current;
     setLoading(true);
-    src.updateImage({
-      url: api.municipalities.landcoverPngUrl(municipality.id, currentYear),
-      coordinates: imgCoords,
-    });
+
+    try {
+      if (map.getLayer(LAYER_ID))  map.removeLayer(LAYER_ID);
+      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+    } catch { /* ignore if already removed */ }
+
+    const url = api.municipalities.landcoverPngUrl(municipality.id, currentYear);
+    map.addSource(SOURCE_ID, { type: "image", url, coordinates: imgCoords });
+    map.addLayer({
+      id: LAYER_ID, type: "raster", source: SOURCE_ID,
+      paint: { "raster-opacity": 1.0 },
+    }, "boundary-line"); // insert below boundary so outline stays on top
   }, [currentYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-play ────────────────────────────────────────────────────────────
