@@ -1,0 +1,18 @@
+# Dev overrides — applied automatically on top of docker-compose.yml
+# Gives hot-reload on both frontend (Next.js HMR) and backend (uvicorn --reload).
+# Production deploys use docker-compose.yml only (ignore this file).
+
+services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+    command: npm run dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules    # keep container's node_modules, don't overwrite with host
+      - /app/.next           # keep Next.js build cache inside container
+    ports:
+      - "3000:3000"
