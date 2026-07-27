@@ -12,6 +12,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from string import Template
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -35,44 +36,44 @@ _HTML_TEMPLATE = """\
 <head>
 <meta charset="utf-8"/>
 <style>
-  body {{ font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #222; margin: 2cm; }}
-  h1   {{ font-size: 16pt; color: #1a4a7a; border-bottom: 2px solid #1a4a7a; padding-bottom: 4px; }}
-  h2   {{ font-size: 12pt; color: #2a5a8a; margin-top: 1.4em; }}
-  h3   {{ font-size: 10pt; color: #374151; margin-top: 1em; margin-bottom: 0.3em; }}
-  table {{ border-collapse: collapse; width: 100%; margin: 0.6em 0; font-size: 9pt; }}
-  th, td {{ border: 1px solid #ccc; padding: 4px 8px; text-align: left; }}
-  th {{ background: #e8f0f8; font-weight: bold; }}
-  tr:nth-child(even) {{ background: #f8fafc; }}
-  .badge-strong   {{ color: #166534; background: #dcfce7; border-radius: 4px; padding: 1px 6px; }}
-  .badge-moderate {{ color: #1e40af; background: #dbeafe; border-radius: 4px; padding: 1px 6px; }}
-  .badge-weak     {{ color: #92400e; background: #fef3c7; border-radius: 4px; padding: 1px 6px; }}
-  .badge-insuf    {{ color: #374151; background: #f3f4f6; border-radius: 4px; padding: 1px 6px; }}
-  .footer {{ font-size: 7pt; color: #888; margin-top: 2em; border-top: 1px solid #ddd; padding-top: 4px; }}
-  .narrative {{ white-space: pre-wrap; background: #f8fafc; border-left: 3px solid #1a4a7a;
-               padding: 8px 12px; font-size: 9pt; }}
-  .map-block {{ page-break-inside: avoid; margin: 1em 0; }}
-  .map-block img {{ width: 100%; max-width: 17cm; display: block; margin: 0.4em 0; border: 1px solid #ddd; }}
-  .map-caption {{ font-size: 8pt; color: #555; font-style: italic; margin-top: 0.2em; }}
+  body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #222; margin: 2cm; }
+  h1   { font-size: 16pt; color: #1a4a7a; border-bottom: 2px solid #1a4a7a; padding-bottom: 4px; }
+  h2   { font-size: 12pt; color: #2a5a8a; margin-top: 1.4em; }
+  h3   { font-size: 10pt; color: #374151; margin-top: 1em; margin-bottom: 0.3em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.6em 0; font-size: 9pt; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  th { background: #e8f0f8; font-weight: bold; }
+  tr:nth-child(even) { background: #f8fafc; }
+  .badge-strong   { color: #166534; background: #dcfce7; border-radius: 4px; padding: 1px 6px; }
+  .badge-moderate { color: #1e40af; background: #dbeafe; border-radius: 4px; padding: 1px 6px; }
+  .badge-weak     { color: #92400e; background: #fef3c7; border-radius: 4px; padding: 1px 6px; }
+  .badge-insuf    { color: #374151; background: #f3f4f6; border-radius: 4px; padding: 1px 6px; }
+  .footer { font-size: 7pt; color: #888; margin-top: 2em; border-top: 1px solid #ddd; padding-top: 4px; }
+  .narrative { white-space: pre-wrap; background: #f8fafc; border-left: 3px solid #1a4a7a;
+               padding: 8px 12px; font-size: 9pt; }
+  .map-block { page-break-inside: avoid; margin: 1em 0; }
+  .map-block img { width: 100%; max-width: 17cm; display: block; margin: 0.4em 0; border: 1px solid #ddd; }
+  .map-caption { font-size: 8pt; color: #555; font-style: italic; margin-top: 0.2em; }
 </style>
 </head>
 <body>
 
-<h1>{municipality_name} — Land Cover Intelligence Report</h1>
+<h1>${municipality_name} — Land Cover Intelligence Report</h1>
 <p>
-  <b>Municipality:</b> {municipality_name} &nbsp;|&nbsp;
-  <b>Analysis period:</b> {year_range} &nbsp;|&nbsp;
-  <b>Dataset:</b> {dataset_version} &nbsp;|&nbsp;
-  <b>Job ID:</b> {job_id_short} &nbsp;|&nbsp;
-  <b>Generated:</b> {generated_at}
+  <b>Municipality:</b> ${municipality_name} &nbsp;|&nbsp;
+  <b>Analysis period:</b> ${year_range} &nbsp;|&nbsp;
+  <b>Dataset:</b> ${dataset_version} &nbsp;|&nbsp;
+  <b>Job ID:</b> ${job_id_short} &nbsp;|&nbsp;
+  <b>Generated:</b> ${generated_at}
 </p>
 
-{maps_section}
-{statistics_section}
-{change_section}
-{evidence_section}
-{narrative_section}
+${maps_section}
+${statistics_section}
+${change_section}
+${evidence_section}
+${narrative_section}
 
-<div class="footer">{machine_label}</div>
+<div class="footer">${machine_label}</div>
 </body>
 </html>
 """
@@ -228,7 +229,8 @@ def generate_pdf(
     to_year    = matrices[0]["to_year"]   if matrices else (years[-1] if years else 0)
     maps_dir   = out_path.parent  # reports/{job_id}/
 
-    html = _HTML_TEMPLATE.format(
+    # Template.safe_substitute uses $name placeholders — immune to { } in dynamic content
+    html = Template(_HTML_TEMPLATE).safe_substitute(
         municipality_name=municipality_name,
         year_range=year_range,
         dataset_version=dataset_ver,
