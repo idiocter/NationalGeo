@@ -57,7 +57,7 @@ _CHANGE_UNCHANGED = (0, 0, 0, 0)
 # Forest Area = Forest + Grassland + Shrubland + Cultivated Land + Open Woodland
 _FOREST_CODES: frozenset[int] = frozenset({4, 5, 6, 9})  # Forest, Grassland, Shrubland, Open Woodland
 _FOREST_RGBA     = ( 45, 106,  79, 255)  # deep green
-_NON_FOREST_RGBA = (200, 183, 156, 255)  # warm tan
+_NON_FOREST_RGBA = (158, 158, 158, 255)  # neutral grey
 
 
 def _apply_forest_palette(band: np.ndarray) -> np.ndarray:

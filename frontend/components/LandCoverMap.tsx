@@ -269,11 +269,15 @@ export function LandCoverMap({
           </p>
           <div className="space-y-1">
             {forestView ? (
-              forestLegend ? forestLegend.map(({ label, colour, km2, pct }) => (
+              forestLegend ? forestLegend.map(({ label, colour, km2 }) => (
                 <div key={label} className="flex items-center gap-1.5">
-                  <span className="inline-block w-3 h-3 rounded-sm shrink-0 border border-gray-300/60" style={{ backgroundColor: colour }} />
+                  <span className="inline-block w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: colour }} />
                   <span className="text-[10px] text-gray-700 leading-tight flex-1">{label}</span>
-                  <span className="text-[10px] text-gray-400 tabular-nums">{pct.toFixed(1)}%</span>
+                  {km2 > 0 && (
+                    <span className="text-[10px] text-gray-400 tabular-nums">
+                      {km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+                    </span>
+                  )}
                 </div>
               )) : (
                 <p className="text-[10px] text-gray-400 italic">Run analysis for live data</p>
@@ -298,11 +302,6 @@ export function LandCoverMap({
           </div>
           {!currentStats && !forestView && (
             <p className="text-[10px] text-gray-400 mt-1.5 italic">Run analysis for live data</p>
-          )}
-          {forestView && currentStats && forestLegend && (
-            <p className="text-[10px] text-gray-400 mt-1.5 border-t border-gray-100 pt-1.5">
-              Forest: {forestLegend[0].km2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
-            </p>
           )}
         </div>
       </div>
