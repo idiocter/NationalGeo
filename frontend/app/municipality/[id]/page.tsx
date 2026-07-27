@@ -70,13 +70,23 @@ export default function MunicipalityPage() {
   }, [id]);
 
   useEffect(() => {
-    if (isDone && jobId && !result) {
+    if (!isDone || !jobId || result) return;
+    let cancelled = false;
+
+    const poll = () => {
       api.analysis.getJob(jobId).then((job) => {
+        if (cancelled) return;
         if (job.status === "complete" || job.status === "partial") {
           setResult(job as JobResult);
+        } else if (job.status !== "failed") {
+          // SSE closed before job finished (race); keep polling every 2 s
+          setTimeout(poll, 2000);
         }
       });
-    }
+    };
+    poll();
+
+    return () => { cancelled = true; };
   }, [isDone, jobId, result]);
 
   const availableStats: LandCoverStatistics[] = result?.statistics ?? [];

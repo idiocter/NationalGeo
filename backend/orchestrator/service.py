@@ -47,6 +47,10 @@ def finalise_job(job_id: str, status: str, cache_key: str | None = None) -> None
                 {"id": job_id},
             ).first()
             if row and row.result:
+                # psycopg2 may return JSONB columns as a plain string instead of a dict.
+                # Normalise to a JSON string for the CAST(:result AS jsonb) parameter.
+                raw = row.result
+                result_json = raw if isinstance(raw, str) else json.dumps(raw)
                 db.execute(
                     text(
                         """
@@ -58,7 +62,7 @@ def finalise_job(job_id: str, status: str, cache_key: str | None = None) -> None
                     {
                         "key": cache_key,
                         "job_id": job_id,
-                        "result": json.dumps(row.result),
+                        "result": result_json,
                     },
                 )
 

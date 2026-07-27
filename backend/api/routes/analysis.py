@@ -165,8 +165,10 @@ async def stream_job(job_id: str) -> StreamingResponse:
                 if message["type"] == "message":
                     yield f"data: {message['data']}\n\n"
                     event = json.loads(message["data"])
-                    # Close stream when job reaches a terminal stage
-                    if event.get("stage") == "complete" or event.get("status") in ("complete", "failed", "partial"):
+                    # Close stream only on the job-level terminal event
+                    # (stage="complete" is published by the orchestrator at the very end).
+                    # Individual stage events also carry status="complete" — do NOT break on those.
+                    if event.get("stage") == "complete":
                         break
                 await asyncio.sleep(0)
         finally:
