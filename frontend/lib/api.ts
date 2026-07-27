@@ -59,10 +59,12 @@ export const api = {
     submit: (envelope: JobEnvelope) =>
       request<SubmitResponse>("/analysis", { method: "POST", body: JSON.stringify(envelope) }),
     getJob: (jobId: string) => request<JobResult>(`/jobs/${jobId}`),
-    reportCsvUrl:  (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.csv`,
-    reportPdfUrl:  (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.pdf`,
-    reportXlsxUrl: (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.xlsx`,
-    downloadZipUrl:(jobId: string) => `${BASE_URL}/jobs/${jobId}/download.zip`,
+    reportCsvUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.csv`,
+    reportPdfUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.pdf`,
+    reportXlsxUrl:     (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.xlsx`,
+    downloadZipUrl:    (jobId: string) => `${BASE_URL}/jobs/${jobId}/download.zip`,
+    comparisonMapUrl:  (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/comparison_map.png`,
+    changeMapUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/change_map.png`,
   },
 
   dashboard: {

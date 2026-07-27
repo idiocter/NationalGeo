@@ -207,13 +207,19 @@ export default function MunicipalityPage() {
 
             {result && jobId && isDone && (
               <section className="border-t border-gray-100 pt-4">
-                <ReportDownload result={{
-                  ...result,
-                  artefacts: {
-                    pdf:  result.artefacts?.pdf  ?? { url: api.analysis.reportPdfUrl(jobId) },
-                    xlsx: result.artefacts?.xlsx ?? { url: api.analysis.reportXlsxUrl(jobId) },
-                  },
-                }} />
+                <ReportDownload
+                  result={{
+                    ...result,
+                    artefacts: {
+                      pdf:  result.artefacts?.pdf  ?? { url: api.analysis.reportPdfUrl(jobId) },
+                      xlsx: result.artefacts?.xlsx ?? { url: api.analysis.reportXlsxUrl(jobId) },
+                      comparison_map: result.artefacts?.comparison_map ?? { url: api.analysis.comparisonMapUrl(jobId) },
+                      change_map:     result.artefacts?.change_map     ?? { url: api.analysis.changeMapUrl(jobId) },
+                    },
+                  }}
+                  comparisonMapUrl={api.analysis.comparisonMapUrl(jobId)}
+                  changeMapUrl={api.analysis.changeMapUrl(jobId)}
+                />
                 <a
                   href={api.analysis.downloadZipUrl(jobId)}
                   download

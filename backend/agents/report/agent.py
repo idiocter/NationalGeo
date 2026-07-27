@@ -38,6 +38,7 @@ _HTML_TEMPLATE = """\
   body {{ font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #222; margin: 2cm; }}
   h1   {{ font-size: 16pt; color: #1a4a7a; border-bottom: 2px solid #1a4a7a; padding-bottom: 4px; }}
   h2   {{ font-size: 12pt; color: #2a5a8a; margin-top: 1.4em; }}
+  h3   {{ font-size: 10pt; color: #374151; margin-top: 1em; margin-bottom: 0.3em; }}
   table {{ border-collapse: collapse; width: 100%; margin: 0.6em 0; font-size: 9pt; }}
   th, td {{ border: 1px solid #ccc; padding: 4px 8px; text-align: left; }}
   th {{ background: #e8f0f8; font-weight: bold; }}
@@ -49,6 +50,9 @@ _HTML_TEMPLATE = """\
   .footer {{ font-size: 7pt; color: #888; margin-top: 2em; border-top: 1px solid #ddd; padding-top: 4px; }}
   .narrative {{ white-space: pre-wrap; background: #f8fafc; border-left: 3px solid #1a4a7a;
                padding: 8px 12px; font-size: 9pt; }}
+  .map-block {{ page-break-inside: avoid; margin: 1em 0; }}
+  .map-block img {{ width: 100%; max-width: 17cm; display: block; margin: 0.4em 0; border: 1px solid #ddd; }}
+  .map-caption {{ font-size: 8pt; color: #555; font-style: italic; margin-top: 0.2em; }}
 </style>
 </head>
 <body>
@@ -62,6 +66,7 @@ _HTML_TEMPLATE = """\
   <b>Generated:</b> {generated_at}
 </p>
 
+{maps_section}
 {statistics_section}
 {change_section}
 {evidence_section}
@@ -71,6 +76,55 @@ _HTML_TEMPLATE = """\
 </body>
 </html>
 """
+
+
+def _maps_html(out_dir: Path, from_year: int, to_year: int, municipality_name: str) -> str:
+    import base64
+
+    sections: list[str] = []
+
+    comp_path   = out_dir / "comparison_map.png"
+    change_path = out_dir / "change_map.png"
+
+    if comp_path.exists():
+        b64 = base64.b64encode(comp_path.read_bytes()).decode()
+        sections.append(
+            f"""<div class="map-block">
+  <h3>Figure 1 — Land Cover Comparison: {from_year} vs {to_year}</h3>
+  <img src="data:image/png;base64,{b64}" alt="Land cover comparison map"/>
+  <p class="map-caption">
+    Side-by-side comparison of land cover extent for {from_year} (left panel) and {to_year} (right panel)
+    for {municipality_name}. Each pixel represents a 30&times;30 m area classified using the ICIMOD
+    11-class Nepal land cover scheme. Muted colours indicate the baseline year; saturated colours
+    indicate the analysis year. The shared legend shows only classes present in either period.
+    Source: ICIMOD Nepal Land Cover · CRS: EPSG:32645 (UTM zone 45N, equal-area).
+  </p>
+</div>"""
+        )
+
+    if change_path.exists():
+        b64 = base64.b64encode(change_path.read_bytes()).decode()
+        sections.append(
+            f"""<div class="map-block">
+  <h3>Figure 2 — Change Detection Map: {from_year}&rarr;{to_year}</h3>
+  <img src="data:image/png;base64,{b64}" alt="Land cover change map"/>
+  <p class="map-caption">
+    Spatial distribution of detected land cover change between {from_year} and {to_year}
+    for {municipality_name}.
+    <b style="color:#2e8b57">Green</b> = vegetation or agricultural gain
+    (Cultivated / Settlement expanding into natural cover);
+    <b style="color:#cc3311">Red</b> = forest or vegetation loss
+    (Forest, Grassland, or Open Woodland converting to other classes);
+    <b style="color:#aaa">Grey</b> = no change detected.
+    Only pixels with classified data in both years are evaluated.
+    Source: ICIMOD Nepal Land Cover · pixel resolution 30 m.
+  </p>
+</div>"""
+        )
+
+    if not sections:
+        return ""
+    return "<h2>Maps</h2>" + "\n".join(sections)
 
 
 def _statistics_html(stats_list: list[dict]) -> str:
@@ -170,12 +224,17 @@ def generate_pdf(
     years = sorted({s["year"] for s in stats_list})
     year_range = f"{years[0]}–{years[-1]}" if len(years) > 1 else str(years[0]) if years else "—"
 
+    from_year  = matrices[0]["from_year"] if matrices else (years[0] if years else 0)
+    to_year    = matrices[0]["to_year"]   if matrices else (years[-1] if years else 0)
+    maps_dir   = out_path.parent  # reports/{job_id}/
+
     html = _HTML_TEMPLATE.format(
         municipality_name=municipality_name,
         year_range=year_range,
         dataset_version=dataset_ver,
         job_id_short=job_id[:8],
         generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        maps_section=_maps_html(maps_dir, from_year, to_year, municipality_name),
         statistics_section=_statistics_html(stats_list),
         change_section=_change_html(matrices),
         evidence_section=_evidence_html(evidence_list),

@@ -125,6 +125,8 @@ export interface JobResult {
     docx?: { url: string };
     xlsx?: { url: string };
     map_bundle?: { url: string };
+    comparison_map?: { url: string };
+    change_map?: { url: string };
   };
   validation?: {
     verdict: "pass" | "warn" | "block";
