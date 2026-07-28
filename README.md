@@ -84,7 +84,7 @@ make up
 make migrate
 
 # 6. Import boundaries and register the dataset
-make import-boundaries     # requires data/boundaries/nepal.gpkg
+make import-boundaries     # requires data/boundaries/nepal_local_units.gpkg
 make ingest                # registers landcover-v3.1 COGs in the DB
 
 # 7. Open the app
@@ -142,9 +142,17 @@ data/dataset/
 ### 3. Start services
 
 ```bash
-make up       # starts db, redis, backend, worker, frontend
-make logs     # tail backend + worker logs
-make down     # stop everything
+make up       # start all services (db, redis, backend, worker, frontend) in the background
+make logs     # tail backend + worker logs (Ctrl-C to detach; services keep running)
+make down     # stop and remove all containers
+```
+
+Under the hood these run `docker compose` from the `infra/` directory:
+
+```bash
+cd infra && docker compose up -d      # == make up
+cd infra && docker compose down       # == make down
+cd infra && docker compose ps         # list running services
 ```
 
 The `ollama` service (Narrative Agent) is in the `narrative` profile and not started by default:
@@ -173,23 +181,23 @@ You need the Nepal local-units GeoPackage (753 municipalities):
 
 ```bash
 make import-boundaries
-# equivalent to:
-# python -m backend.scripts.import_boundaries --file data/boundaries/nepal.gpkg
+# equivalent to (runs inside the backend container):
+# python -m backend.scripts.import_boundaries --file /data/boundaries/nepal_local_units.gpkg
 ```
 
-The boundary file should contain columns `id`, `NAME_EN`, `NAME_NP`, `PROVINCE`, `DISTRICT`, `TYPE`, `AREA_KM2`, `POPULATION`, and a polygon geometry in EPSG:4326. See `backend/scripts/import_boundaries.py` for exact column names.
+The boundary file should contain columns `id`, `NAME_EN`, `NAME_NP`, `PROVINCE`, `DISTRICT`, `TYPE`, `AREA_KM2`, and a polygon geometry in EPSG:4326. See `backend/scripts/import_boundaries.py` for exact column names.
 
 ### 6. Register the dataset
 
 ```bash
 make ingest
-# equivalent to:
+# equivalent to (runs inside the backend container):
 # python -m backend.scripts.ingest_rasters \
-#     --source-dir data/landcover/landcover-v3.1 \
+#     --source-dir /data/landcover/landcover-v3.1 \
 #     --version landcover-v3.1
 
-# Custom version or directory:
-make ingest VERSION=landcover-v3.1 SOURCE_DIR=../data/landcover/landcover-v3.1
+# Custom dataset version (source dir is derived as /data/landcover/<VERSION>):
+make ingest VERSION=landcover-v3.1
 ```
 
 ---
@@ -266,7 +274,7 @@ cd backend && python -m pytest tests/test_raster_analysis.py -v
 | `make lint` | Run ruff linter (local) |
 | `make typecheck` | Run mypy type checker (local) |
 | `make prepare-dataset` | Convert raw ICIMOD TIFs → pipeline COGs |
-| `make import-boundaries` | Import nepal.gpkg into PostGIS |
+| `make import-boundaries` | Import nepal_local_units.gpkg into PostGIS |
 | `make ingest` | Register COG rasters in the DB |
 
 ---
@@ -306,18 +314,20 @@ The dataset uses the ICIMOD 11-class Nepal land-cover system:
 | Code | Class | Colour |
 |------|-------|--------|
 | 1 | Water Body | `#4a90d9` |
-| 2 | Cultivated Land | `#f5d44e` |
-| 3 | Shrubland | `#a8c97f` |
+| 2 | Snow/Ice/Glacier | `#b0d6eb` |
+| 3 | Barren Land | `#c4b28a` |
 | 4 | Forest | `#1a7a4a` |
 | 5 | Grassland | `#90d44b` |
-| 6 | Barren Land | `#c4b28a` |
-| 7 | Snow/Ice/Glacier | `#e8f4f8` |
+| 6 | Shrubland | `#a8c97f` |
+| 7 | Cultivated Land | `#f5d44e` |
 | 8 | Settlement | `#d63b2f` |
 | 9 | Open Woodland | `#5da06f` |
 | 10 | Rocky/Bare Ground | `#8b7355` |
 | 11 | Others | `#b0b0b0` |
 
-Class names are inferred from ICIMOD documentation. Verify against the dataset PDF for authoritative definitions.
+Codes match `frontend/lib/constants.ts`, verified against national VAT pixel counts (codes 2/7 and 3/6 were swapped in an earlier revision and have since been corrected).
+
+**Forest Area (binary classification):** the map overlay, legend, and reports treat **Forest (4) + Open Woodland (9)** as "Forest Area" — true tree cover only. Grassland, Shrubland, and Cultivated Land are counted as non-forest. This single definition lives in `frontend/lib/constants.ts` (`FOREST_CODES`), `frontend/components/ReportFigures.tsx`, `backend/api/routes/landcover_map.py`, `backend/agents/cartography/agent.py`, and `backend/agents/report/agent.py` — keep them in sync if you change it.
 
 **Projection:** EPSG:32645 (UTM Zone 45N). Area distortion across Nepal is < 0.04% — acceptable for land-cover analysis at this scale.
 
