@@ -247,67 +247,14 @@ export function AlluvialChart({ change, customGroups }: Props) {
         </svg>
       </div>
 
-      {/* Major transitions table */}
-      <div>
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-          Major transitions (≥ 5 km²)
+      {/* The detailed transition table lives in the "Detailed Data Tables"
+          section below (with CSV export) — not duplicated here. */}
+      {minor.length > 0 && (
+        <p className="text-[10px] text-gray-400">
+          + {minor.length} minor transitions totalling{" "}
+          {minorTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} km² (each &lt; 5 km²)
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-1 pr-3 font-semibold text-gray-500">From</th>
-                <th className="text-left py-1 pr-3 font-semibold text-gray-500">To</th>
-                <th className="text-right py-1 pr-3 font-semibold text-gray-500">Area km²</th>
-                <th className="text-right py-1 font-semibold text-gray-500">% of Source</th>
-              </tr>
-            </thead>
-            <tbody>
-              {change.transitions
-                .filter((t) => t.from_code !== t.to_code && t.area_km2 >= 5)
-                .sort((a, b) => b.area_km2 - a.area_km2)
-                .slice(0, 12)
-                .map((t, i) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-1 pr-3">
-                      <span className="inline-flex items-center gap-1">
-                        <span
-                          className="w-2 h-2 rounded-sm shrink-0"
-                          style={{ backgroundColor: resolveColor(t.from_code, customGroups) }}
-                        />
-                        {resolveLabel(t.from_code, customGroups)}
-                      </span>
-                    </td>
-                    <td className="py-1 pr-3">
-                      <span className="inline-flex items-center gap-1">
-                        <span
-                          className="w-2 h-2 rounded-sm shrink-0"
-                          style={{ backgroundColor: resolveColor(t.to_code, customGroups) }}
-                        />
-                        {resolveLabel(t.to_code, customGroups)}
-                      </span>
-                    </td>
-                    <td className="py-1 pr-3 text-right tabular-nums text-gray-700">
-                      {t.area_km2.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                    </td>
-                    <td
-                      className={`py-1 text-right tabular-nums
-                        ${t.priority_flag ? "text-amber-600 font-semibold" : "text-gray-500"}`}
-                    >
-                      {t.pct_of_source.toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-        {minor.length > 0 && (
-          <p className="text-[10px] text-gray-400 mt-1.5">
-            + {minor.length} minor transitions totalling{" "}
-            {minorTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} km² (each &lt; 5 km²)
-          </p>
-        )}
-      </div>
+      )}
 
       <p className="text-[10px] text-gray-400">
         Source: ICIMOD Nepal Land Cover · EPSG:32645 · Transitions computed at pixel level (30 m resolution)
