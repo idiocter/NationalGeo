@@ -45,6 +45,15 @@ _CHANGE_UNCHANGED = (180, 180, 180)
 _CHANGE_GAIN      = ( 46, 139,  87)  # sea green (positive)
 _CHANGE_LOSS      = (204,  51,  17)  # red-orange (negative)
 
+# 4-class forest change map colours
+_FC_STABLE_NONFOREST = (168, 200, 232)   # light blue
+_FC_STABLE_FOREST    = ( 45, 106,  79)   # dark green
+_FC_FOREST_LOSS      = (220,  38,  38)   # red
+_FC_FOREST_GAIN      = ( 29,  78, 216)   # dark blue
+
+# Codes considered "forest" for the 4-class change map
+_FOREST_CODES: frozenset[int] = frozenset({4, 5, 6, 9})
+
 
 def _band_to_rgb(band: np.ndarray) -> np.ndarray:
     h, w = band.shape
@@ -52,6 +61,31 @@ def _band_to_rgb(band: np.ndarray) -> np.ndarray:
     for code, colour in _RGBA.items():
         rgb[band == code] = colour
     return rgb
+
+
+def _add_north_arrow(ax, x: float = 0.95, y: float = 0.95, size: float = 0.06) -> None:
+    """Draw a north arrow in axes-fraction coordinates (top-right by default)."""
+    import matplotlib.patches as mpatches  # noqa: PLC0415
+    from matplotlib.patches import FancyArrowPatch  # noqa: PLC0415
+
+    # Arrow shaft: from (x, y-size) to (x, y)
+    ax.annotate(
+        "", xy=(x, y), xytext=(x, y - size),
+        xycoords="axes fraction", textcoords="axes fraction",
+        arrowprops=dict(
+            arrowstyle="-|>",
+            color="#1e293b",
+            lw=1.5,
+            mutation_scale=10,
+        ),
+    )
+    # "N" label slightly above the arrow tip
+    ax.text(
+        x, y + 0.025, "N",
+        transform=ax.transAxes,
+        ha="center", va="bottom",
+        fontsize=9, fontweight="bold", color="#1e293b",
+    )
 
 
 def _render_comparison(
@@ -78,8 +112,9 @@ def _render_comparison(
         ax.imshow(rgb)
         ax.set_title(str(yr), fontsize=11, fontweight="bold")
         ax.axis("off")
+        _add_north_arrow(ax, x=0.96, y=0.94, size=0.07)
 
-    # Shared legend — only classes present in either band
+    # Shared legend — only classes present in either band — centered between panels
     present_codes = sorted(set(np.unique(band0)) | set(np.unique(band1)))
     patches = [
         mpatches.Patch(
@@ -88,14 +123,91 @@ def _render_comparison(
         )
         for c in present_codes if c != 0
     ]
-    fig.legend(handles=patches, loc="lower center", ncol=4, fontsize=7,
-               framealpha=0.9, bbox_to_anchor=(0.5, 0.0))
+    fig.legend(handles=patches, loc="lower center", ncol=4, fontsize=7.5,
+               framealpha=0.95, edgecolor="#d1d5db",
+               bbox_to_anchor=(0.5, 0.0), title="Land Cover Class",
+               title_fontsize=7.5)
 
-    plt.tight_layout(rect=[0, 0.07, 1, 0.96])
+    plt.tight_layout(rect=[0, 0.08, 1, 0.96])
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Comparison map saved: %s", out_path)
+
+
+def _render_forest_change_4class(
+    band0: np.ndarray, band1: np.ndarray, y0: int, y1: int,
+    municipality_name: str, job_id: str, out_path: Path,
+) -> None:
+    """4-class forest change map: Stable Non-Forest, Stable Forest, Loss, Gain."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    h, w = band0.shape
+    rgb = np.zeros((h, w, 3), dtype=np.uint8)
+
+    valid = (band0 != 0) & (band1 != 0)
+    is_forest0 = np.isin(band0, list(_FOREST_CODES))
+    is_forest1 = np.isin(band1, list(_FOREST_CODES))
+
+    stable_nf = valid & ~is_forest0 & ~is_forest1
+    stable_f  = valid & is_forest0  & is_forest1
+    loss      = valid & is_forest0  & ~is_forest1
+    gain      = valid & ~is_forest0 & is_forest1
+
+    rgb[stable_nf] = _FC_STABLE_NONFOREST
+    rgb[stable_f]  = _FC_STABLE_FOREST
+    rgb[loss]      = _FC_FOREST_LOSS
+    rgb[gain]      = _FC_FOREST_GAIN
+    # nodata pixels remain black → replace with neutral white
+    rgb[~valid] = (240, 240, 240)
+
+    total_px = int(valid.sum()) or 1
+    pct = {
+        "stable_nf": 100.0 * int(stable_nf.sum()) / total_px,
+        "stable_f":  100.0 * int(stable_f.sum())  / total_px,
+        "loss":      100.0 * int(loss.sum())       / total_px,
+        "gain":      100.0 * int(gain.sum())        / total_px,
+    }
+
+    fig, ax = plt.subplots(figsize=(8, 8), facecolor="white")
+    ax.imshow(rgb)
+    ax.set_title(
+        f"{municipality_name} — Forest Change Map {y0}→{y1}\n"
+        f"NGLIP job {job_id[:8]}",
+        fontsize=10, fontweight="bold",
+    )
+    ax.axis("off")
+    _add_north_arrow(ax, x=0.96, y=0.94, size=0.07)
+
+    patches = [
+        mpatches.Patch(
+            color=tuple(v / 255 for v in _FC_STABLE_NONFOREST),
+            label=f"Stable Non-Forest ({pct['stable_nf']:.1f}%)",
+        ),
+        mpatches.Patch(
+            color=tuple(v / 255 for v in _FC_STABLE_FOREST),
+            label=f"Stable Forest ({pct['stable_f']:.1f}%)",
+        ),
+        mpatches.Patch(
+            color=tuple(v / 255 for v in _FC_FOREST_LOSS),
+            label=f"Forest Area Loss ({pct['loss']:.1f}%)",
+        ),
+        mpatches.Patch(
+            color=tuple(v / 255 for v in _FC_FOREST_GAIN),
+            label=f"Forest Area Gain ({pct['gain']:.1f}%)",
+        ),
+    ]
+    ax.legend(handles=patches, loc="lower right", fontsize=9,
+              framealpha=0.95, edgecolor="#d1d5db", title="Forest Change",
+              title_fontsize=8.5)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Forest 4-class change map saved: %s", out_path)
 
 
 def _render_change_map(
@@ -211,8 +323,9 @@ class CartographyAgent:
             w = min(band0.shape[1], band1.shape[1])
             band0, band1 = band0[:h, :w], band1[:h, :w]
 
-            comp_path   = out_dir / "comparison_map.png"
-            change_path = out_dir / "change_map.png"
+            comp_path        = out_dir / "comparison_map.png"
+            change_path      = out_dir / "change_map.png"
+            forest_4cls_path = out_dir / "forest_change_4class.png"
 
             _render_comparison(
                 band0, band1, from_year, to_year,
@@ -222,9 +335,14 @@ class CartographyAgent:
                 band0, band1, from_year, to_year,
                 municipality_name, job_id, change_path,
             )
+            _render_forest_change_4class(
+                band0, band1, from_year, to_year,
+                municipality_name, job_id, forest_4cls_path,
+            )
 
-            artefact_urls["comparison_map"] = {"url": f"/jobs/{job_id}/maps/comparison_map.png"}
-            artefact_urls["change_map"]     = {"url": f"/jobs/{job_id}/maps/change_map.png"}
+            artefact_urls["comparison_map"]       = {"url": f"/jobs/{job_id}/maps/comparison_map.png"}
+            artefact_urls["change_map"]            = {"url": f"/jobs/{job_id}/maps/change_map.png"}
+            artefact_urls["forest_change_4class"]  = {"url": f"/jobs/{job_id}/maps/forest_change_4class.png"}
 
         # Persist artefact URLs into jobs.result
         if artefact_urls:
