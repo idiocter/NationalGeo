@@ -409,7 +409,14 @@ async def serve_map_file(
     if not map_path.exists():
         raise HTTPException(status_code=404, detail="Figure could not be generated")
 
-    return FileResponse(str(map_path), media_type="image/png")
+    # no-store: these figures are regenerated when the rendering logic changes
+    # (e.g. boundary outline, forest definition) while the URL stays stable, so
+    # caching them makes the browser keep serving the old image.
+    return FileResponse(
+        str(map_path),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 @router.get("/jobs/{job_id}/download.zip")
