@@ -128,10 +128,17 @@ def _add_scale_bar(ax, img_w_px: int, img_h_px: int, px_size_m: float | None) ->
     )
 
 
+def _add_footer(fig, note: str | None) -> None:
+    """Draw a small provenance / extent caption along the bottom of the figure."""
+    if not note:
+        return
+    fig.text(0.5, 0.006, note, ha="center", va="bottom", fontsize=6.5, color="#888888")
+
+
 def _render_comparison(
     band0: np.ndarray, band1: np.ndarray, y0: int, y1: int,
     municipality_name: str, dataset_version: str, job_id: str,
-    out_path: Path, px_size_m: float | None = None,
+    out_path: Path, px_size_m: float | None = None, footer: str | None = None,
 ) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -170,7 +177,8 @@ def _render_comparison(
                bbox_to_anchor=(0.5, 0.0), title="Land Cover Class",
                title_fontsize=7.5)
 
-    plt.tight_layout(rect=[0, 0.08, 1, 0.96])
+    plt.tight_layout(rect=[0, 0.09, 1, 0.96])
+    _add_footer(fig, footer)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -180,7 +188,7 @@ def _render_comparison(
 def _render_forest_change_4class(
     band0: np.ndarray, band1: np.ndarray, y0: int, y1: int,
     municipality_name: str, job_id: str, out_path: Path,
-    px_size_m: float | None = None,
+    px_size_m: float | None = None, footer: str | None = None,
 ) -> None:
     """4-class forest change map: Stable Non-Forest, Stable Forest, Loss, Gain."""
     import matplotlib
@@ -248,6 +256,7 @@ def _render_forest_change_4class(
               framealpha=0.95, edgecolor="#d1d5db", title="Forest Change",
               title_fontsize=8.5)
 
+    _add_footer(fig, footer)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -257,7 +266,7 @@ def _render_forest_change_4class(
 def _render_change_map(
     band0: np.ndarray, band1: np.ndarray, y0: int, y1: int,
     municipality_name: str, job_id: str, out_path: Path,
-    px_size_m: float | None = None,
+    px_size_m: float | None = None, footer: str | None = None,
 ) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -307,6 +316,7 @@ def _render_change_map(
     ax.legend(handles=patches, loc="upper right", fontsize=8, framealpha=0.95,
               edgecolor="#d1d5db", title="Change class", title_fontsize=8.5)
 
+    _add_footer(fig, footer)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -394,17 +404,38 @@ class CartographyAgent:
             change_path      = out_dir / "change_map.png"
             forest_4cls_path = out_dir / "forest_change_4class.png"
 
+            # Provenance / extent caption shown along the bottom of every map
+            from datetime import date as _date  # noqa: PLC0415
+            minx, miny, maxx, maxy = geom_4326.bounds
+            # Total municipality area from the latest-year statistics, if present
+            latest_stats = max(
+                (s for s in result.get("statistics", [])),
+                key=lambda s: s.get("year", 0), default=None,
+            )
+            area_note = ""
+            if latest_stats:
+                total_km2 = sum(
+                    c.get("area_km2", 0) for c in latest_stats.get("classes", [])
+                    if c.get("code", 0) != 0
+                )
+                area_note = f"Area: {total_km2:,.0f} km²  ·  "
+            footer = (
+                f"{area_note}Extent: {minx:.3f}–{maxx:.3f}°E, {miny:.3f}–{maxy:.3f}°N  ·  "
+                f"Source: ICIMOD Nepal Land Cover  ·  Analysis CRS EPSG:32645  ·  "
+                f"Generated {_date.today().isoformat()}  ·  NGLIP job {job_id[:8]}"
+            )
+
             _render_comparison(
                 band0, band1, from_year, to_year,
-                municipality_name, dataset_ver, job_id, comp_path, px_size_m,
+                municipality_name, dataset_ver, job_id, comp_path, px_size_m, footer,
             )
             _render_change_map(
                 band0, band1, from_year, to_year,
-                municipality_name, job_id, change_path, px_size_m,
+                municipality_name, job_id, change_path, px_size_m, footer,
             )
             _render_forest_change_4class(
                 band0, band1, from_year, to_year,
-                municipality_name, job_id, forest_4cls_path, px_size_m,
+                municipality_name, job_id, forest_4cls_path, px_size_m, footer,
             )
 
             artefact_urls["comparison_map"]       = {"url": f"/jobs/{job_id}/maps/comparison_map.png"}
