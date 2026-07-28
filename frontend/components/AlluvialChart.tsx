@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FOREST_CODES, FOREST_COLOUR, NON_FOREST_COLOUR } from "@/lib/constants";
 import type { ChangeMatrix, CustomClassGroup } from "@/types/api";
 
@@ -9,16 +9,18 @@ interface Props {
   customGroups?: CustomClassGroup[] | null;
 }
 
-// SVG layout constants
-const NODE_W    = 14;
-const SVG_W     = 520;
-const MARGIN_X  = 120;
+// SVG layout constants — larger canvas so the diagram fills the card width.
+const NODE_W    = 20;
+const SVG_W     = 900;
+const SVG_H     = 420;
+const MARGIN_X  = 160;
 const FLOW_W    = SVG_W - 2 * MARGIN_X - 2 * NODE_W;
 
 interface HoverInfo { label: string; area: number }
 
 export function AlluvialChart({ change }: Props) {
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const { forestLoss, forestGain, forestStable, nonStable } = useMemo(() => {
     let forestStable = 0;  // forest → forest (any subtype, including same-code)
@@ -36,6 +38,42 @@ export function AlluvialChart({ change }: Props) {
     }
     return { forestLoss, forestGain, forestStable, nonStable };
   }, [change]);
+
+  // Rasterise the SVG to a PNG and trigger a download.
+  const downloadPng = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("width", String(SVG_W));
+    clone.setAttribute("height", String(SVG_H));
+    const src = new XMLSerializer().serializeToString(clone);
+    const url = URL.createObjectURL(new Blob([src], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2; // 2× for a crisp export
+      const canvas = document.createElement("canvas");
+      canvas.width = SVG_W * scale;
+      canvas.height = SVG_H * scale;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { URL.revokeObjectURL(url); return; }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `forest_transitions_${change.from_year}-${change.to_year}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      }, "image/png");
+    };
+    img.src = url;
+  }, [change.from_year, change.to_year]);
 
   const hasAny = forestStable > 0.01 || nonStable > 0.01 || forestLoss > 0.01 || forestGain > 0.01;
 
@@ -59,24 +97,23 @@ export function AlluvialChart({ change }: Props) {
   //
   // Node sizes proportional to total area flowing through them.
 
-  const SVG_H  = 260;
-  const availH = SVG_H - 24;
+  const availH = SVG_H - 44;
   const total  = forestStable + nonStable + forestLoss + forestGain || 1;
 
-  const srcForestH = Math.max(((forestStable + forestLoss) / total) * availH, 8);
-  const srcNonH    = Math.max(((nonStable + forestGain)   / total) * availH, 8);
-  const tgtForestH = Math.max(((forestStable + forestGain) / total) * availH, 8);
-  const tgtNonH    = Math.max(((nonStable + forestLoss)    / total) * availH, 8);
+  const srcForestH = Math.max(((forestStable + forestLoss) / total) * availH, 12);
+  const srcNonH    = Math.max(((nonStable + forestGain)   / total) * availH, 12);
+  const tgtForestH = Math.max(((forestStable + forestGain) / total) * availH, 12);
+  const tgtNonH    = Math.max(((nonStable + forestLoss)    / total) * availH, 12);
 
-  const NODE_PAD = 14;
+  const NODE_PAD = 26;
 
   const srcTotalH = srcForestH + srcNonH + NODE_PAD;
-  const srcStartY = 12 + Math.max(0, (availH - srcTotalH) / 2);
+  const srcStartY = 24 + Math.max(0, (availH - srcTotalH) / 2);
   const srcForestY = srcStartY;
   const srcNonY    = srcStartY + srcForestH + NODE_PAD;
 
   const tgtTotalH = tgtForestH + tgtNonH + NODE_PAD;
-  const tgtStartY = 12 + Math.max(0, (availH - tgtTotalH) / 2);
+  const tgtStartY = 24 + Math.max(0, (availH - tgtTotalH) / 2);
   const tgtForestY = tgtStartY;
   const tgtNonY    = tgtStartY + tgtForestH + NODE_PAD;
 
@@ -85,10 +122,10 @@ export function AlluvialChart({ change }: Props) {
   const cpX  = FLOW_W / 2.5;
 
   // Ribbon heights from total scale
-  const sfH = Math.max((forestStable / total) * availH, forestStable > 0.01 ? 4 : 0);
-  const lH  = Math.max((forestLoss   / total) * availH, forestLoss  > 0.01 ? 4 : 0);
-  const snH = Math.max((nonStable    / total) * availH, nonStable   > 0.01 ? 4 : 0);
-  const gH  = Math.max((forestGain   / total) * availH, forestGain  > 0.01 ? 4 : 0);
+  const sfH = Math.max((forestStable / total) * availH, forestStable > 0.01 ? 5 : 0);
+  const lH  = Math.max((forestLoss   / total) * availH, forestLoss  > 0.01 ? 5 : 0);
+  const snH = Math.max((nonStable    / total) * availH, nonStable   > 0.01 ? 5 : 0);
+  const gH  = Math.max((forestGain   / total) * availH, forestGain  > 0.01 ? 5 : 0);
 
   const ribbon = (sx: number, sy: number, tx: number, ty: number, h: number) =>
     [
@@ -110,23 +147,39 @@ export function AlluvialChart({ change }: Props) {
 
   return (
     <div className="space-y-3">
-      <div>
-        <h3 className="text-sm font-semibold text-gray-800">
-          Forest Transitions — {change.from_year} → {change.to_year}
-        </h3>
-        <p className="text-xs text-gray-400 mt-0.5">
-          <span className="text-red-500 font-medium">Loss: {fmt(forestLoss)} km²</span>
-          {" · "}
-          <span className="text-emerald-600 font-medium">Gain: {fmt(forestGain)} km²</span>
-          {" · "}
-          <span className={netDelta >= 0 ? "text-emerald-600" : "text-red-500"}>
-            Net: {netDelta >= 0 ? "+" : ""}{fmt(netDelta)} km²
-          </span>
-          {" · "}
-          <span className="text-gray-500">
-            Stable: Forest {fmt(forestStable)} km² · Non-Forest {fmt(nonStable)} km²
-          </span>
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">
+            Forest Transitions — {change.from_year} → {change.to_year}
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            <span className="text-red-500 font-medium">Loss: {fmt(forestLoss)} km²</span>
+            {" · "}
+            <span className="text-emerald-600 font-medium">Gain: {fmt(forestGain)} km²</span>
+            {" · "}
+            <span className={netDelta >= 0 ? "text-emerald-600" : "text-red-500"}>
+              Net: {netDelta >= 0 ? "+" : ""}{fmt(netDelta)} km²
+            </span>
+            {" · "}
+            <span className="text-gray-500">
+              Stable: Forest {fmt(forestStable)} km² · Non-Forest {fmt(nonStable)} km²
+            </span>
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={downloadPng}
+          className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700
+                     hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200
+                     rounded-lg px-2.5 py-1.5 transition-colors"
+          aria-label="Download the forest transitions chart as a PNG image"
+        >
+          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M8 2v8m0 0L5 7m3 3l3-3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M2.5 11.5v1a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1" strokeLinecap="round" />
+          </svg>
+          PNG
+        </button>
       </div>
 
       {/* Hover tooltip */}
@@ -137,19 +190,21 @@ export function AlluvialChart({ change }: Props) {
         </div>
       )}
 
-      {/* SVG alluvial diagram */}
-      <div className="overflow-x-auto">
+      {/* SVG alluvial diagram — fills the card width, height scales with it */}
+      <div className="w-full">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          className="w-full"
-          style={{ height: SVG_H }}
+          preserveAspectRatio="xMidYMid meet"
+          className="w-full h-auto"
+          fontFamily="ui-sans-serif, system-ui, sans-serif"
           aria-label={`Forest transition flows ${change.from_year} to ${change.to_year}`}
         >
           {/* Year labels */}
-          <text x={srcX + NODE_W / 2} y={9} textAnchor="middle"
-                fontSize={9} fill="#9ca3af" fontWeight="700">{change.from_year}</text>
-          <text x={tgtX + NODE_W / 2} y={9} textAnchor="middle"
-                fontSize={9} fill="#9ca3af" fontWeight="700">{change.to_year}</text>
+          <text x={srcX + NODE_W / 2} y={16} textAnchor="middle"
+                fontSize={15} fill="#6b7280" fontWeight="700">{change.from_year}</text>
+          <text x={tgtX + NODE_W / 2} y={16} textAnchor="middle"
+                fontSize={15} fill="#6b7280" fontWeight="700">{change.to_year}</text>
 
           {/* Stable non-forest — drawn first, behind */}
           {nonStable > 0.01 && (
@@ -188,44 +243,44 @@ export function AlluvialChart({ change }: Props) {
           )}
 
           {/* Source nodes */}
-          <rect x={srcX} y={srcForestY} width={NODE_W} height={srcForestH} fill={FOREST_COLOUR} rx={3} />
-          <text x={srcX - 8} y={srcForestY + srcForestH / 2}
-                textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#374151">
+          <rect x={srcX} y={srcForestY} width={NODE_W} height={srcForestH} fill={FOREST_COLOUR} rx={4} />
+          <text x={srcX - 12} y={srcForestY + srcForestH / 2}
+                textAnchor="end" dominantBaseline="middle" fontSize={15} fill="#374151">
             Forest
           </text>
-          <text x={srcX - 8} y={srcForestY + srcForestH / 2 + 12}
-                textAnchor="end" dominantBaseline="middle" fontSize={8} fill="#9ca3af">
+          <text x={srcX - 12} y={srcForestY + srcForestH / 2 + 20}
+                textAnchor="end" dominantBaseline="middle" fontSize={12} fill="#9ca3af">
             {fmt(forestStable + forestLoss)} km²
           </text>
 
-          <rect x={srcX} y={srcNonY} width={NODE_W} height={srcNonH} fill={NON_FOREST_COLOUR} rx={3} />
-          <text x={srcX - 8} y={srcNonY + srcNonH / 2}
-                textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#374151">
+          <rect x={srcX} y={srcNonY} width={NODE_W} height={srcNonH} fill={NON_FOREST_COLOUR} rx={4} />
+          <text x={srcX - 12} y={srcNonY + srcNonH / 2}
+                textAnchor="end" dominantBaseline="middle" fontSize={15} fill="#374151">
             Non-Forest
           </text>
-          <text x={srcX - 8} y={srcNonY + srcNonH / 2 + 12}
-                textAnchor="end" dominantBaseline="middle" fontSize={8} fill="#9ca3af">
+          <text x={srcX - 12} y={srcNonY + srcNonH / 2 + 20}
+                textAnchor="end" dominantBaseline="middle" fontSize={12} fill="#9ca3af">
             {fmt(nonStable + forestGain)} km²
           </text>
 
           {/* Target nodes */}
-          <rect x={tgtX} y={tgtForestY} width={NODE_W} height={tgtForestH} fill={FOREST_COLOUR} rx={3} />
-          <text x={tgtX + NODE_W + 8} y={tgtForestY + tgtForestH / 2}
-                textAnchor="start" dominantBaseline="middle" fontSize={10} fill="#374151">
+          <rect x={tgtX} y={tgtForestY} width={NODE_W} height={tgtForestH} fill={FOREST_COLOUR} rx={4} />
+          <text x={tgtX + NODE_W + 12} y={tgtForestY + tgtForestH / 2}
+                textAnchor="start" dominantBaseline="middle" fontSize={15} fill="#374151">
             Forest
           </text>
-          <text x={tgtX + NODE_W + 8} y={tgtForestY + tgtForestH / 2 + 12}
-                textAnchor="start" dominantBaseline="middle" fontSize={8} fill="#9ca3af">
+          <text x={tgtX + NODE_W + 12} y={tgtForestY + tgtForestH / 2 + 20}
+                textAnchor="start" dominantBaseline="middle" fontSize={12} fill="#9ca3af">
             {fmt(forestStable + forestGain)} km²
           </text>
 
-          <rect x={tgtX} y={tgtNonY} width={NODE_W} height={tgtNonH} fill={NON_FOREST_COLOUR} rx={3} />
-          <text x={tgtX + NODE_W + 8} y={tgtNonY + tgtNonH / 2}
-                textAnchor="start" dominantBaseline="middle" fontSize={10} fill="#374151">
+          <rect x={tgtX} y={tgtNonY} width={NODE_W} height={tgtNonH} fill={NON_FOREST_COLOUR} rx={4} />
+          <text x={tgtX + NODE_W + 12} y={tgtNonY + tgtNonH / 2}
+                textAnchor="start" dominantBaseline="middle" fontSize={15} fill="#374151">
             Non-Forest
           </text>
-          <text x={tgtX + NODE_W + 8} y={tgtNonY + tgtNonH / 2 + 12}
-                textAnchor="start" dominantBaseline="middle" fontSize={8} fill="#9ca3af">
+          <text x={tgtX + NODE_W + 12} y={tgtNonY + tgtNonH / 2 + 20}
+                textAnchor="start" dominantBaseline="middle" fontSize={12} fill="#9ca3af">
             {fmt(nonStable + forestLoss)} km²
           </text>
         </svg>

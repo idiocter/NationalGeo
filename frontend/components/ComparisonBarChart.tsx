@@ -5,7 +5,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -115,12 +114,6 @@ export function ComparisonBarChart({ statistics }: Props) {
             unit=" km²"
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend
-            iconType="square"
-            iconSize={10}
-            wrapperStyle={{ fontSize: 12, color: "#6b7280", paddingTop: 10 }}
-            formatter={(value) => <span style={{ color: "#6b7280" }}>{value}</span>}
-          />
           <Bar dataKey={baseKey} name={String(baseYear.year)} radius={[0, 3, 3, 0]}>
             {data.map((entry, i) => (
               <Cell key={i} fill={entry.colour} fillOpacity={0.4} stroke={entry.colour} strokeWidth={1} />
@@ -133,6 +126,22 @@ export function ComparisonBarChart({ statistics }: Props) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+
+      {/* Custom legend — the year is encoded by shade (lighter = base year,
+          darker = latest); category (Forest green / Non-Forest grey) is on the Y axis.
+          Rendered as plain JSX so the swatch colours are guaranteed. */}
+      <div className="flex items-center justify-center gap-5 text-xs text-gray-500">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded-sm border border-black/5"
+                style={{ background: FOREST_COLOUR, opacity: 0.4 }} />
+          {baseYear.year} <span className="text-gray-400">(lighter)</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded-sm"
+                style={{ background: FOREST_COLOUR }} />
+          {latestYear.year} <span className="text-gray-400">(darker)</span>
+        </span>
+      </div>
 
       <p className="text-[10px] text-gray-400">
         Source: ICIMOD Nepal Land Cover · Equal-area projection EPSG:32645
