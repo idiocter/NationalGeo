@@ -109,15 +109,20 @@ export function TrendChart({ statistics }: Props) {
           Land cover area trend · {y0}–{y1}
         </h3>
         <p className="text-xs text-gray-400 mt-0.5">
-          Major classes ({MAJOR_THRESHOLD_PCT}%+ share) shown individually
+          <span className="font-medium text-gray-600">
+            {majorCodes.size} major class{majorCodes.size !== 1 ? "es" : ""}
+          </span>{" "}
+          (≥{MAJOR_THRESHOLD_PCT}% share — individual lines)
           {minorCodes.length > 0 && (
-            <> · {minorCodes.length} minor class{minorCodes.length > 1 ? "es" : ""} grouped as Others</>
+            <> · <span className="font-medium text-gray-500">{minorCodes.length} minor</span> grouped as dashed "Others"</>
           )}
           {biggestChange.name && (
-            <> · biggest change: <span className={biggestChange.delta > 0 ? "text-emerald-600" : "text-red-500"}>
-              {biggestChange.name} {biggestChange.delta > 0 ? "+" : ""}
-              {biggestChange.delta.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
-            </span></>
+            <> · biggest change:{" "}
+              <span className={biggestChange.delta > 0 ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
+                {biggestChange.name} {biggestChange.delta > 0 ? "+" : ""}
+                {biggestChange.delta.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+              </span>
+            </>
           )}
         </p>
       </div>
@@ -173,11 +178,57 @@ export function TrendChart({ statistics }: Props) {
         </LineChart>
       </ResponsiveContainer>
 
+      {/* Minor classes detail table */}
       {minorCodes.length > 0 && (
-        <p className="text-[10px] text-gray-400">
-          Others includes:{" "}
-          {minorCodes.map((c) => CLASS_NAMES[c] ?? `Class ${c}`).join(", ")}
-        </p>
+        <details className="mt-2">
+          <summary className="text-[10px] text-blue-500 cursor-pointer select-none hover:text-blue-700">
+            Minor classes breakdown ({minorCodes.length} classes — click to expand)
+          </summary>
+          <div className="mt-1.5 overflow-x-auto rounded-lg border border-gray-100">
+            <table className="w-full text-[10px] text-gray-600 border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left px-2 py-1 font-medium text-gray-500">Class</th>
+                  {sorted.map((s) => (
+                    <th key={s.year} className="text-right px-2 py-1 font-medium text-gray-500 tabular-nums">
+                      {s.year}
+                    </th>
+                  ))}
+                  <th className="text-right px-2 py-1 font-medium text-gray-500">Δ km²</th>
+                </tr>
+              </thead>
+              <tbody>
+                {minorCodes.map((code, i) => {
+                  const yearVals = sorted.map((s) => {
+                    const found = s.classes.find((c) => c.code === code);
+                    return found?.area_km2 ?? 0;
+                  });
+                  const delta = yearVals[yearVals.length - 1] - yearVals[0];
+                  return (
+                    <tr key={code} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                      <td className="px-2 py-0.5 flex items-center gap-1.5">
+                        <span
+                          className="inline-block w-2 h-2 rounded-sm shrink-0"
+                          style={{ backgroundColor: CLASS_COLOURS[code] ?? "#ccc" }}
+                        />
+                        {CLASS_NAMES[code] ?? `Class ${code}`}
+                      </td>
+                      {yearVals.map((v, j) => (
+                        <td key={j} className="text-right px-2 py-0.5 tabular-nums">
+                          {v > 0 ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
+                        </td>
+                      ))}
+                      <td className={`text-right px-2 py-0.5 tabular-nums font-medium
+                                     ${delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-500" : "text-gray-400"}`}>
+                        {delta !== 0 ? `${delta > 0 ? "+" : ""}${delta.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </details>
       )}
 
       <p className="text-[10px] text-gray-400">

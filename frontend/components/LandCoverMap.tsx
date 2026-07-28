@@ -188,7 +188,90 @@ export function LandCoverMap({
   const handleDownload = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().toBlob((blob) => {
+
+    const mapCanvas = map.getCanvas();
+    const w = mapCanvas.width;
+    const h = mapCanvas.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    const offscreen = document.createElement("canvas");
+    offscreen.width  = w;
+    offscreen.height = h;
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) return;
+
+    // Composite map then overlay the north arrow on canvas
+    ctx.drawImage(mapCanvas, 0, 0);
+
+    const pad  = 14 * dpr;
+    const aw   = 28 * dpr;
+    const ah   = 38 * dpr;
+    const cx   = pad + aw / 2;
+    const boxH = ah + 22 * dpr;
+
+    // White rounded-rect background
+    const r = 7 * dpr;
+    const bx = pad - 4 * dpr, by = pad - 4 * dpr;
+    const bw = aw + 8 * dpr,  bh = boxH + 8 * dpr;
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by);
+    ctx.lineTo(bx + bw - r, by);
+    ctx.arcTo(bx + bw, by, bx + bw, by + r, r);
+    ctx.lineTo(bx + bw, by + bh - r);
+    ctx.arcTo(bx + bw, by + bh, bx + bw - r, by + bh, r);
+    ctx.lineTo(bx + r, by + bh);
+    ctx.arcTo(bx, by + bh, bx, by + bh - r, r);
+    ctx.lineTo(bx, by + r);
+    ctx.arcTo(bx, by, bx + r, by, r);
+    ctx.closePath();
+    ctx.fill();
+
+    // "N" label
+    ctx.fillStyle = "#1e293b";
+    ctx.font = `bold ${10 * dpr}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("N", cx, pad + 6 * dpr);
+
+    const arrowTop = pad + 14 * dpr;
+    const arrowMid = arrowTop + ah * 0.52;
+    const arrowBot = arrowTop + ah;
+    const hw = aw * 0.48;
+
+    // North half — dark
+    ctx.fillStyle = "#1e293b";
+    ctx.beginPath();
+    ctx.moveTo(cx, arrowTop);
+    ctx.lineTo(cx - hw, arrowMid);
+    ctx.lineTo(cx, arrowMid - ah * 0.07);
+    ctx.closePath();
+    ctx.fill();
+
+    // South-right half — medium grey
+    ctx.fillStyle = "#94a3b8";
+    ctx.beginPath();
+    ctx.moveTo(cx, arrowBot);
+    ctx.lineTo(cx + hw, arrowMid);
+    ctx.lineTo(cx, arrowMid - ah * 0.07);
+    ctx.closePath();
+    ctx.fill();
+
+    // South-left half — light grey
+    ctx.fillStyle = "#cbd5e1";
+    ctx.beginPath();
+    ctx.moveTo(cx, arrowBot);
+    ctx.lineTo(cx - hw, arrowMid);
+    ctx.lineTo(cx, arrowMid - ah * 0.07);
+    ctx.closePath();
+    ctx.fill();
+
+    // "S" label
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = `${9 * dpr}px sans-serif`;
+    ctx.fillText("S", cx, arrowBot + 8 * dpr);
+
+    offscreen.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -246,30 +329,30 @@ export function LandCoverMap({
 
         {/* Legend — bottom-right above seek bar */}
         <div className="absolute bottom-2 right-2 z-10 bg-white
-                        rounded-xl shadow-md border border-gray-200 p-2.5
-                        max-h-52 overflow-y-auto min-w-[160px]">
-          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                        rounded-xl shadow-md border border-gray-200 p-3
+                        max-h-64 overflow-y-auto min-w-[190px]">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
             Land Cover · <span className="text-blue-600">{currentYear}</span>
           </p>
           {legendEntries.length > 0 ? (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {legendEntries.map((cls) => (
-                <div key={cls.code} className="flex items-center gap-1.5">
+                <div key={cls.code} className="flex items-center gap-2">
                   <span
-                    className="inline-block w-3 h-3 rounded-sm shrink-0 border border-gray-300/60"
+                    className="inline-block w-4 h-4 rounded shrink-0 border border-gray-300/60"
                     style={{ backgroundColor: CLASS_COLOURS[cls.code] ?? "#ccc" }}
                   />
-                  <span className="text-[10px] text-gray-700 leading-tight flex-1 truncate">
+                  <span className="text-xs text-gray-700 leading-tight flex-1 truncate">
                     {CLASS_NAMES[cls.code] ?? cls.name}
                   </span>
-                  <span className="text-[10px] text-gray-400 tabular-nums">
+                  <span className="text-xs text-gray-500 tabular-nums font-medium">
                     {cls.share_pct.toFixed(1)}%
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-[10px] text-gray-400 italic">Run analysis for live data</p>
+            <p className="text-xs text-gray-400 italic">Run analysis for live data</p>
           )}
         </div>
       </div>

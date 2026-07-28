@@ -8,6 +8,7 @@ Every output is labelled as machine-generated.
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 from datetime import datetime
@@ -19,6 +20,15 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.contracts.models import CLASS_NAMES
+
+# Colours matching frontend CLASS_COLOURS
+_MPL_COLOURS: dict[int, str] = {
+    0: "#cccccc", 1: "#4a90d9", 2: "#b0d6eb", 3: "#c4b28a",
+    4: "#1a7a4a", 5: "#90d44b", 6: "#a8c97f", 7: "#f5d44e",
+    8: "#d63b2f", 9: "#5da06f", 10: "#8b7355", 11: "#b0b0b0",
+}
+
+_FOREST_CODES_RPT: frozenset[int] = frozenset({4, 5, 6, 9})
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -54,6 +64,9 @@ _HTML_TEMPLATE = """\
   .map-block { page-break-inside: avoid; margin: 1em 0; }
   .map-block img { width: 100%; max-width: 17cm; display: block; margin: 0.4em 0; border: 1px solid #ddd; }
   .map-caption { font-size: 8pt; color: #555; font-style: italic; margin-top: 0.2em; }
+  .chart-block { page-break-inside: avoid; margin: 1em 0; }
+  .chart-block img { width: 100%; max-width: 17cm; display: block; margin: 0.4em 0; border: 1px solid #e5e7eb; border-radius: 4px; }
+  .chart-caption { font-size: 8pt; color: #555; font-style: italic; margin-top: 0.2em; }
 </style>
 </head>
 <body>
@@ -68,6 +81,7 @@ _HTML_TEMPLATE = """\
 </p>
 
 ${maps_section}
+${charts_section}
 ${statistics_section}
 ${change_section}
 ${evidence_section}
@@ -210,6 +224,277 @@ def _narrative_html(narrative: str) -> str:
     return f"<h2>Summary Narrative</h2><div class='narrative'>{narrative}</div>"
 
 
+# ── Chart generation (matplotlib) ─────────────────────────────────────────────
+
+def _mpl_setup() -> tuple:
+    """Import and configure matplotlib for off-screen rendering."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+    return plt
+
+
+def _generate_trend_chart_png(stats_list: list[dict]) -> bytes | None:
+    """Line chart: land cover area by year, major classes individual, minor grouped."""
+    try:
+        plt = _mpl_setup()
+        if len(stats_list) < 2:
+            return None
+
+        sorted_stats = sorted(stats_list, key=lambda s: s["year"])
+        years = [s["year"] for s in sorted_stats]
+
+        all_codes = sorted({
+            c["code"] for s in sorted_stats for c in s["classes"] if c["code"] != 0
+        })
+
+        major_codes: set[int] = set()
+        for stat in sorted_stats:
+            total = sum(c["area_km2"] for c in stat["classes"] if c["code"] != 0)
+            if total <= 0:
+                continue
+            for cls in stat["classes"]:
+                if cls["code"] != 0 and (cls["area_km2"] / total) * 100 >= 5:
+                    major_codes.add(cls["code"])
+        minor_codes = [c for c in all_codes if c not in major_codes]
+
+        major_sorted = sorted(
+            major_codes,
+            key=lambda c: sum(
+                next((x["area_km2"] for x in s["classes"] if x["code"] == c), 0)
+                for s in sorted_stats
+            ),
+            reverse=True,
+        )
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        fig.patch.set_facecolor("#f8fafc")
+        ax.set_facecolor("#f8fafc")
+
+        for code in major_sorted:
+            areas = [
+                next((c["area_km2"] for c in s["classes"] if c["code"] == code), 0)
+                for s in sorted_stats
+            ]
+            name   = CLASS_NAMES.get(code, f"Class {code}")
+            colour = _MPL_COLOURS.get(code, "#888888")
+            ax.plot(years, areas, label=name, color=colour, linewidth=2,
+                    marker="o", markersize=5, zorder=3)
+            ax.annotate(
+                f"{areas[-1]:,.0f}",
+                xy=(years[-1], areas[-1]),
+                xytext=(5, 0), textcoords="offset points",
+                fontsize=7, color=colour, va="center",
+            )
+
+        if minor_codes:
+            others = [
+                sum(
+                    next((c["area_km2"] for c in s["classes"] if c["code"] == code), 0)
+                    for code in minor_codes
+                )
+                for s in sorted_stats
+            ]
+            ax.plot(years, others, label="Others (minor)", color="#b0b0b0",
+                    linewidth=1.5, linestyle="--", marker="s", markersize=3, zorder=2)
+
+            minor_names = ", ".join(CLASS_NAMES.get(c, f"Class {c}") for c in minor_codes)
+            ax.text(0.0, -0.14, f"Minor classes (grouped as Others): {minor_names}",
+                    transform=ax.transAxes, fontsize=7, color="#9ca3af", ha="left")
+
+        ax.set_xlabel("Year", fontsize=10, color="#374151")
+        ax.set_ylabel("Area (km²)", fontsize=10, color="#374151")
+        ax.set_title("Land Cover Area Trend — Major vs Minor Classes",
+                     fontsize=12, fontweight="bold", color="#1a4a7a", pad=10)
+        ax.legend(loc="upper right", fontsize=8, ncol=2,
+                  framealpha=0.9, edgecolor="#e5e7eb")
+        ax.grid(True, alpha=0.3, color="#e5e7eb")
+        ax.set_xticks(years)
+        ax.tick_params(colors="#6b7280", labelsize=9)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#e5e7eb")
+
+        plt.tight_layout(rect=[0, 0.06, 1, 1])
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as exc:
+        logger.warning("Could not generate trend chart: %s", exc)
+        return None
+
+
+def _generate_forest_trend_png(stats_list: list[dict]) -> bytes | None:
+    """Line chart: forest vs non-forest area over years."""
+    try:
+        plt = _mpl_setup()
+        if len(stats_list) < 2:
+            return None
+
+        sorted_stats = sorted(stats_list, key=lambda s: s["year"])
+        years = [s["year"] for s in sorted_stats]
+        forest_km2  = []
+        nonforest_km2 = []
+        for stat in sorted_stats:
+            f  = sum(c["area_km2"] for c in stat["classes"] if c["code"] in _FOREST_CODES_RPT)
+            nf = sum(c["area_km2"] for c in stat["classes"]
+                     if c["code"] != 0 and c["code"] not in _FOREST_CODES_RPT)
+            forest_km2.append(f)
+            nonforest_km2.append(nf)
+
+        fig, ax = plt.subplots(figsize=(10, 4))
+        fig.patch.set_facecolor("#f8fafc")
+        ax.set_facecolor("#f8fafc")
+
+        ax.plot(years, forest_km2, label="Forest Area", color="#2d6a4f",
+                linewidth=2.5, marker="o", markersize=6, zorder=3)
+        ax.plot(years, nonforest_km2, label="Non-Forest Area", color="#9e9e9e",
+                linewidth=2.5, marker="o", markersize=6, zorder=3)
+
+        ax.set_xlabel("Year", fontsize=10, color="#374151")
+        ax.set_ylabel("Area (km²)", fontsize=10, color="#374151")
+        ax.set_title("Forest vs Non-Forest Cover Trend",
+                     fontsize=12, fontweight="bold", color="#1a4a7a", pad=10)
+        ax.legend(loc="right", fontsize=9, framealpha=0.9, edgecolor="#e5e7eb")
+        ax.grid(True, alpha=0.3, color="#e5e7eb")
+        ax.set_xticks(years)
+        ax.tick_params(colors="#6b7280", labelsize=9)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#e5e7eb")
+
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as exc:
+        logger.warning("Could not generate forest chart: %s", exc)
+        return None
+
+
+def _generate_change_chart_png(matrices: list[dict]) -> bytes | None:
+    """Horizontal bar chart: net km² change by class."""
+    try:
+        plt = _mpl_setup()
+        if not matrices:
+            return None
+
+        matrix = matrices[0]
+        net = sorted(
+            [n for n in matrix.get("net_change", []) if abs(n["delta_km2"]) > 0.01],
+            key=lambda n: n["delta_km2"],
+        )
+        if not net:
+            return None
+
+        labels  = [CLASS_NAMES.get(n["code"], n["class_name"]) for n in net]
+        deltas  = [n["delta_km2"] for n in net]
+        colours = ["#16a34a" if d > 0 else "#dc2626" for d in deltas]
+        max_abs = max(abs(d) for d in deltas) or 1
+
+        fig_h = max(3.0, 0.45 * len(net) + 1.5)
+        fig, ax = plt.subplots(figsize=(9, fig_h))
+        fig.patch.set_facecolor("#f8fafc")
+        ax.set_facecolor("#f8fafc")
+
+        bars = ax.barh(labels, deltas, color=colours, height=0.6, zorder=3)
+        ax.axvline(0, color="#374151", linewidth=0.8, zorder=4)
+        ax.set_xlabel("Net Change (km²)", fontsize=10, color="#374151")
+        ax.set_title(
+            f"Net Land Cover Change: {matrix['from_year']}–{matrix['to_year']}",
+            fontsize=12, fontweight="bold", color="#1a4a7a", pad=10,
+        )
+        ax.grid(True, axis="x", alpha=0.3, color="#e5e7eb")
+        ax.tick_params(colors="#6b7280", labelsize=9)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#e5e7eb")
+
+        offset = max_abs * 0.02
+        for bar, delta in zip(bars, deltas):
+            sign = "+" if delta > 0 else ""
+            ax.text(
+                bar.get_width() + (offset if delta >= 0 else -offset),
+                bar.get_y() + bar.get_height() / 2,
+                f"{sign}{delta:,.1f}",
+                va="center", ha="left" if delta >= 0 else "right",
+                fontsize=7.5, color="#374151",
+            )
+
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as exc:
+        logger.warning("Could not generate change chart: %s", exc)
+        return None
+
+
+def _charts_html(stats_list: list[dict], matrices: list[dict], fig_offset: int = 3) -> str:
+    import base64  # noqa: PLC0415
+
+    sections: list[str] = []
+    n = fig_offset
+
+    trend_png = _generate_trend_chart_png(stats_list)
+    if trend_png:
+        n += 1
+        b64 = base64.b64encode(trend_png).decode()
+        sections.append(
+            f"""<div class="chart-block">
+  <h3>Figure {n} — Land Cover Area Trend (Major &amp; Minor Classes)</h3>
+  <img src="data:image/png;base64,{b64}" alt="Land cover area trend"/>
+  <p class="chart-caption">
+    Area (km²) per land cover class over the full analysis period.
+    Major classes (≥5% share in any year) are shown as individual coloured lines;
+    minor classes are aggregated as "Others" (dashed grey line).
+    Values at right are the latest-year totals.
+  </p>
+</div>"""
+        )
+
+    forest_png = _generate_forest_trend_png(stats_list)
+    if forest_png:
+        n += 1
+        b64 = base64.b64encode(forest_png).decode()
+        sections.append(
+            f"""<div class="chart-block">
+  <h3>Figure {n} — Forest vs Non-Forest Cover Trend</h3>
+  <img src="data:image/png;base64,{b64}" alt="Forest vs non-forest trend"/>
+  <p class="chart-caption">
+    Forest area (Forest, Grassland, Shrubland, Open Woodland — codes 4, 5, 6, 9)
+    versus all other land cover classes over time.
+    Source: ICIMOD Nepal Land Cover · equal-area projection EPSG:32645.
+  </p>
+</div>"""
+        )
+
+    change_png = _generate_change_chart_png(matrices)
+    if change_png:
+        n += 1
+        b64 = base64.b64encode(change_png).decode()
+        sections.append(
+            f"""<div class="chart-block">
+  <h3>Figure {n} — Net Change by Land Cover Class</h3>
+  <img src="data:image/png;base64,{b64}" alt="Net change bar chart"/>
+  <p class="chart-caption">
+    Net gain (green) or loss (red) in km² per land cover class over the analysis period.
+    Classes with change &lt;0.01 km² are omitted.
+  </p>
+</div>"""
+        )
+
+    if not sections:
+        return ""
+    return "<h2>Charts</h2>" + "\n".join(sections)
+
+
 def generate_pdf(
     job_id: str, municipality_name: str,
     result: dict, out_path: Path,
@@ -229,6 +514,10 @@ def generate_pdf(
     to_year    = matrices[0]["to_year"]   if matrices else (years[-1] if years else 0)
     maps_dir   = out_path.parent  # reports/{job_id}/
 
+    maps_html = _maps_html(maps_dir, from_year, to_year, municipality_name)
+    # Figure numbering: maps section occupies figures 1–2, charts start at 3
+    fig_offset = maps_html.count("<h3>Figure")
+
     # Template.safe_substitute uses $name placeholders — immune to { } in dynamic content
     html = Template(_HTML_TEMPLATE).safe_substitute(
         municipality_name=municipality_name,
@@ -236,7 +525,8 @@ def generate_pdf(
         dataset_version=dataset_ver,
         job_id_short=job_id[:8],
         generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-        maps_section=_maps_html(maps_dir, from_year, to_year, municipality_name),
+        maps_section=maps_html,
+        charts_section=_charts_html(stats_list, matrices, fig_offset=fig_offset),
         statistics_section=_statistics_html(stats_list),
         change_section=_change_html(matrices),
         evidence_section=_evidence_html(evidence_list),
