@@ -97,42 +97,64 @@ def _maps_html(out_dir: Path, from_year: int, to_year: int, municipality_name: s
     import base64
 
     sections: list[str] = []
+    fig_n = 0
 
-    comp_path   = out_dir / "comparison_map.png"
-    change_path = out_dir / "change_map.png"
+    comp_path        = out_dir / "comparison_map.png"
+    change_path      = out_dir / "change_map.png"
+    forest_4cls_path = out_dir / "forest_change_4class.png"
 
     if comp_path.exists():
+        fig_n += 1
         b64 = base64.b64encode(comp_path.read_bytes()).decode()
         sections.append(
             f"""<div class="map-block">
-  <h3>Figure 1 — Land Cover Comparison: {from_year} vs {to_year}</h3>
+  <h3>Figure {fig_n} — Land Cover Comparison: {from_year} vs {to_year}</h3>
   <img src="data:image/png;base64,{b64}" alt="Land cover comparison map"/>
   <p class="map-caption">
     Side-by-side comparison of land cover extent for {from_year} (left panel) and {to_year} (right panel)
     for {municipality_name}. Each pixel represents a 30&times;30 m area classified using the ICIMOD
-    11-class Nepal land cover scheme. Muted colours indicate the baseline year; saturated colours
-    indicate the analysis year. The shared legend shows only classes present in either period.
+    11-class Nepal land cover scheme. North arrows are shown on each panel.
+    The shared legend shows only classes present in either period.
     Source: ICIMOD Nepal Land Cover · CRS: EPSG:32645 (UTM zone 45N, equal-area).
   </p>
 </div>"""
         )
 
     if change_path.exists():
+        fig_n += 1
         b64 = base64.b64encode(change_path.read_bytes()).decode()
         sections.append(
             f"""<div class="map-block">
-  <h3>Figure 2 — Change Detection Map: {from_year}&rarr;{to_year}</h3>
+  <h3>Figure {fig_n} — Change Detection Map: {from_year}&rarr;{to_year}</h3>
   <img src="data:image/png;base64,{b64}" alt="Land cover change map"/>
   <p class="map-caption">
     Spatial distribution of detected land cover change between {from_year} and {to_year}
     for {municipality_name}.
-    <b style="color:#2e8b57">Green</b> = vegetation or agricultural gain
-    (Cultivated / Settlement expanding into natural cover);
-    <b style="color:#cc3311">Red</b> = forest or vegetation loss
-    (Forest, Grassland, or Open Woodland converting to other classes);
+    <b style="color:#2e8b57">Green</b> = vegetation or agricultural gain;
+    <b style="color:#cc3311">Red</b> = forest or vegetation loss;
     <b style="color:#aaa">Grey</b> = no change detected.
     Only pixels with classified data in both years are evaluated.
     Source: ICIMOD Nepal Land Cover · pixel resolution 30 m.
+  </p>
+</div>"""
+        )
+
+    if forest_4cls_path.exists():
+        fig_n += 1
+        b64 = base64.b64encode(forest_4cls_path.read_bytes()).decode()
+        sections.append(
+            f"""<div class="map-block">
+  <h3>Figure {fig_n} — Forest Change Map ({from_year}→{to_year})</h3>
+  <img src="data:image/png;base64,{b64}" alt="4-class forest change map"/>
+  <p class="map-caption">
+    Four-class forest change map for {municipality_name} ({from_year}–{to_year}).
+    <b style="color:#1d4ed8">Dark blue</b> = Forest Area Gain (non-forest converted to forest/shrub/grassland/open woodland);
+    <b style="color:#dc2626">Red</b> = Forest Area Loss;
+    <b style="color:#2d6a4f">Dark green</b> = Stable Forest;
+    <b style="color:#a8c8e8">Light blue</b> = Stable Non-Forest.
+    Forest defined as codes 4 (Forest), 5 (Grassland), 6 (Shrubland), 9 (Open Woodland).
+    Percentages reflect share of valid (non-nodata) pixels.
+    Source: ICIMOD Nepal Land Cover · EPSG:32645 · 30 m resolution.
   </p>
 </div>"""
         )
@@ -235,7 +257,7 @@ def _mpl_setup() -> tuple:
 
 
 def _generate_trend_chart_png(stats_list: list[dict]) -> bytes | None:
-    """Line chart: land cover area by year, major classes individual, minor grouped."""
+    """Two-panel line chart: major classes (top) and minor classes (bottom) on separate axes."""
     try:
         plt = _mpl_setup()
         if len(stats_list) < 2:
@@ -267,57 +289,81 @@ def _generate_trend_chart_png(stats_list: list[dict]) -> bytes | None:
             reverse=True,
         )
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        fig.patch.set_facecolor("#f8fafc")
-        ax.set_facecolor("#f8fafc")
-
-        for code in major_sorted:
-            areas = [
-                next((c["area_km2"] for c in s["classes"] if c["code"] == code), 0)
+        def _get_areas(code: int) -> list[float]:
+            return [
+                next((c["area_km2"] for c in s["classes"] if c["code"] == code), 0.0)
                 for s in sorted_stats
             ]
+
+        def _style_ax(ax) -> None:
+            ax.grid(True, alpha=0.3, color="#e5e7eb")
+            ax.set_xticks(years)
+            ax.tick_params(colors="#6b7280", labelsize=9)
+            ax.set_ylabel("Area (km²)", fontsize=9, color="#374151")
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#e5e7eb")
+
+        has_minor = bool(minor_codes)
+        fig_h = 9 if has_minor else 5
+        if has_minor:
+            fig, (ax_maj, ax_min) = plt.subplots(
+                2, 1, figsize=(10, fig_h),
+                gridspec_kw={"hspace": 0.45, "height_ratios": [3, 2]},
+            )
+        else:
+            fig, ax_maj = plt.subplots(figsize=(10, fig_h))
+            ax_min = None
+
+        fig.patch.set_facecolor("white")
+
+        # ── Top panel: major classes ─────────────────────────────────────────
+        ax_maj.set_facecolor("#f8fafc")
+        ax_maj.set_title(
+            "Land Cover Area Trend — Major Classes (larger area)",
+            fontsize=11, fontweight="bold", color="#1a4a7a", pad=6,
+        )
+        for code in major_sorted:
+            areas  = _get_areas(code)
             name   = CLASS_NAMES.get(code, f"Class {code}")
-            colour = _MPL_COLOURS.get(code, "#888888")
-            ax.plot(years, areas, label=name, color=colour, linewidth=2,
-                    marker="o", markersize=5, zorder=3)
-            ax.annotate(
+            colour = _MPL_COLOURS.get(code, "#888")
+            ax_maj.plot(years, areas, label=name, color=colour,
+                        linewidth=2, marker="o", markersize=5, zorder=3)
+            ax_maj.annotate(
                 f"{areas[-1]:,.0f}",
                 xy=(years[-1], areas[-1]),
                 xytext=(5, 0), textcoords="offset points",
                 fontsize=7, color=colour, va="center",
             )
+        ax_maj.legend(loc="upper right", fontsize=8, ncol=2,
+                      framealpha=0.9, edgecolor="#e5e7eb", title="Class",
+                      title_fontsize=7)
+        _style_ax(ax_maj)
 
-        if minor_codes:
-            others = [
-                sum(
-                    next((c["area_km2"] for c in s["classes"] if c["code"] == code), 0)
-                    for code in minor_codes
-                )
-                for s in sorted_stats
-            ]
-            ax.plot(years, others, label="Others (minor)", color="#b0b0b0",
-                    linewidth=1.5, linestyle="--", marker="s", markersize=3, zorder=2)
+        # ── Bottom panel: minor classes ───────────────────────────────────────
+        if ax_min is not None and minor_codes:
+            ax_min.set_facecolor("#f8fafc")
+            ax_min.set_title(
+                "Minor Classes (smaller area)",
+                fontsize=10, fontweight="bold", color="#374151", pad=6,
+            )
+            for code in minor_codes:
+                areas  = _get_areas(code)
+                name   = CLASS_NAMES.get(code, f"Class {code}")
+                colour = _MPL_COLOURS.get(code, "#888")
+                ax_min.plot(years, areas, label=name, color=colour,
+                            linewidth=1.8, marker="s", markersize=4, zorder=3)
+            ax_min.legend(loc="upper right", fontsize=7.5, ncol=2,
+                          framealpha=0.9, edgecolor="#e5e7eb", title="Class",
+                          title_fontsize=7)
+            ax_min.set_xlabel("Year", fontsize=9, color="#374151")
+            _style_ax(ax_min)
+        elif ax_min is None:
+            ax_maj.set_xlabel("Year", fontsize=9, color="#374151")
 
-            minor_names = ", ".join(CLASS_NAMES.get(c, f"Class {c}") for c in minor_codes)
-            ax.text(0.0, -0.14, f"Minor classes (grouped as Others): {minor_names}",
-                    transform=ax.transAxes, fontsize=7, color="#9ca3af", ha="left")
-
-        ax.set_xlabel("Year", fontsize=10, color="#374151")
-        ax.set_ylabel("Area (km²)", fontsize=10, color="#374151")
-        ax.set_title("Land Cover Area Trend — Major vs Minor Classes",
-                     fontsize=12, fontweight="bold", color="#1a4a7a", pad=10)
-        ax.legend(loc="upper right", fontsize=8, ncol=2,
-                  framealpha=0.9, edgecolor="#e5e7eb")
-        ax.grid(True, alpha=0.3, color="#e5e7eb")
-        ax.set_xticks(years)
-        ax.tick_params(colors="#6b7280", labelsize=9)
-        for spine in ax.spines.values():
-            spine.set_edgecolor("#e5e7eb")
-
-        plt.tight_layout(rect=[0, 0.06, 1, 1])
+        fig.suptitle("", fontsize=1)  # suppress auto-title spacing
+        plt.tight_layout()
         buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
-                    facecolor=fig.get_facecolor())
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
         plt.close(fig)
         buf.seek(0)
         return buf.read()
@@ -436,6 +482,179 @@ def _generate_change_chart_png(matrices: list[dict]) -> bytes | None:
         return None
 
 
+def _generate_sankey_png(matrices: list[dict]) -> bytes | None:
+    """Full alluvial Sankey including stable (same-class) flows using matplotlib bezier patches."""
+    try:
+        import matplotlib.patches as mpatches  # noqa: PLC0415
+        from matplotlib.path import Path as MPath  # noqa: PLC0415
+
+        plt = _mpl_setup()
+        if not matrices:
+            return None
+
+        matrix = matrices[0]
+        transitions = [
+            t for t in matrix.get("transitions", [])
+            if t.get("area_km2", 0) >= 0.5
+        ]
+        if not transitions:
+            return None
+
+        # Collect unique codes and their totals for sizing
+        src_totals: dict[int, float] = {}
+        tgt_totals: dict[int, float] = {}
+        for t in transitions:
+            fc, tc, a = t["from_code"], t["to_code"], t["area_km2"]
+            src_totals[fc] = src_totals.get(fc, 0) + a
+            tgt_totals[tc] = tgt_totals.get(tc, 0) + a
+
+        src_codes = sorted(src_totals, key=lambda c: -src_totals[c])
+        tgt_codes = sorted(tgt_totals, key=lambda c: -tgt_totals[c])
+        total_area = sum(src_totals.values()) or 1.0
+
+        # Layout constants (data coordinates: x ∈ [0,1], y ∈ [0,1])
+        NODE_W = 0.025
+        NODE_PAD = 0.018
+        MARGIN_L = 0.22   # space for left labels
+        MARGIN_R = 0.22
+        FLOW_X0 = MARGIN_L + NODE_W
+        FLOW_X1 = 1.0 - MARGIN_R - NODE_W
+        AVAIL_H = 1.0 - 0.04  # 2% top + bottom margin
+
+        def _place_nodes(codes: list[int], totals: dict[int, float]) -> dict[int, tuple[float, float]]:
+            node_heights = {c: max((totals[c] / total_area) * AVAIL_H, 0.008) for c in codes}
+            total_h = sum(node_heights[c] for c in codes) + (len(codes) - 1) * NODE_PAD
+            start_y = 0.02 + max(0.0, (AVAIL_H - total_h) / 2)
+            pos: dict[int, tuple[float, float]] = {}
+            y = start_y
+            for c in codes:
+                h = node_heights[c]
+                pos[c] = (y, h)   # (y_bottom, height)
+                y += h + NODE_PAD
+            return pos
+
+        src_pos = _place_nodes(src_codes, src_totals)
+        tgt_pos = _place_nodes(tgt_codes, tgt_totals)
+
+        # Cursor tracks consumed height within each node
+        src_cursor = {c: src_pos[c][0] for c in src_codes}
+        tgt_cursor = {c: tgt_pos[c][0] for c in tgt_codes}
+
+        fig_h = max(5.5, len(max(src_codes, tgt_codes, key=len if hasattr(len, '__call__') else lambda _: 0)) * 0.35 + 2)
+        n_nodes = max(len(src_codes), len(tgt_codes))
+        fig_h = max(5.5, n_nodes * 0.55 + 2.5)
+        fig, ax = plt.subplots(figsize=(10, fig_h))
+        fig.patch.set_facecolor("white")
+        ax.set_facecolor("white")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+
+        ax.set_title(
+            f"Land Cover Transitions — {matrix.get('from_year', '?')} → {matrix.get('to_year', '?')}\n"
+            f"(All transitions ≥ 0.5 km² including stable cover)",
+            fontsize=11, fontweight="bold", color="#1a4a7a", pad=8,
+        )
+
+        cpX = (FLOW_X1 - FLOW_X0) * 0.45
+
+        # Sort transitions: stable (same-class) first so they render under cross-class flows
+        sorted_transitions = sorted(
+            transitions,
+            key=lambda t: (0 if t["from_code"] == t["to_code"] else 1, -t["area_km2"]),
+        )
+
+        for t in sorted_transitions:
+            fc, tc, area = t["from_code"], t["to_code"], t["area_km2"]
+            h = max((area / total_area) * AVAIL_H, 0.001)
+
+            sx = FLOW_X0
+            tx = FLOW_X1
+            sy = src_cursor.get(fc, 0)
+            ty = tgt_cursor.get(tc, 0)
+
+            src_cursor[fc] = sy + h
+            tgt_cursor[tc] = ty + h
+
+            colour = _MPL_COLOURS.get(fc, "#888888")
+            is_stable = (fc == tc)
+            alpha = 0.55 if is_stable else 0.32
+
+            # Bezier quad: left edge top → right edge top → right edge bottom → left edge bottom
+            verts = [
+                (sx, sy),                        # MOVETO: left top
+                (sx + cpX, sy), (tx - cpX, ty), (tx, ty),   # CURVE4: top ribbon
+                (tx, ty + h),                    # LINETO: right bottom
+                (tx - cpX, ty + h), (sx + cpX, sy + h), (sx, sy + h),  # CURVE4: bottom ribbon
+                (sx, sy),                        # CLOSEPOLY
+            ]
+            codes = [
+                MPath.MOVETO,
+                MPath.CURVE4, MPath.CURVE4, MPath.CURVE4,
+                MPath.LINETO,
+                MPath.CURVE4, MPath.CURVE4, MPath.CURVE4,
+                MPath.CLOSEPOLY,
+            ]
+            path = MPath(verts, codes)
+            patch = mpatches.PathPatch(
+                path, facecolor=colour, alpha=alpha,
+                edgecolor=colour, linewidth=0.3,
+            )
+            ax.add_patch(patch)
+
+        # Draw nodes and labels
+        for code in src_codes:
+            y0, h = src_pos[code]
+            colour = _MPL_COLOURS.get(code, "#888888")
+            rect = mpatches.FancyBboxPatch(
+                (MARGIN_L, y0), NODE_W, h,
+                boxstyle="square,pad=0", facecolor=colour, edgecolor="white", linewidth=0.5,
+            )
+            ax.add_patch(rect)
+            label = CLASS_NAMES.get(code, f"Class {code}")
+            area_km2 = src_totals.get(code, 0)
+            ax.text(
+                MARGIN_L - 0.012, y0 + h / 2,
+                f"{label}\n{area_km2:,.0f} km²",
+                ha="right", va="center", fontsize=7.5,
+                color="#1e293b", linespacing=1.3,
+            )
+
+        for code in tgt_codes:
+            y0, h = tgt_pos[code]
+            colour = _MPL_COLOURS.get(code, "#888888")
+            x0 = 1.0 - MARGIN_R - NODE_W
+            rect = mpatches.FancyBboxPatch(
+                (x0, y0), NODE_W, h,
+                boxstyle="square,pad=0", facecolor=colour, edgecolor="white", linewidth=0.5,
+            )
+            ax.add_patch(rect)
+            label = CLASS_NAMES.get(code, f"Class {code}")
+            area_km2 = tgt_totals.get(code, 0)
+            ax.text(
+                x0 + NODE_W + 0.012, y0 + h / 2,
+                f"{label}\n{area_km2:,.0f} km²",
+                ha="left", va="center", fontsize=7.5,
+                color="#1e293b", linespacing=1.3,
+            )
+
+        # Year column headers
+        ax.text(MARGIN_L + NODE_W / 2, 0.985, str(matrix.get("from_year", "")),
+                ha="center", va="top", fontsize=9, color="#6b7280", fontweight="bold")
+        ax.text(1.0 - MARGIN_R - NODE_W / 2, 0.985, str(matrix.get("to_year", "")),
+                ha="center", va="top", fontsize=9, color="#6b7280", fontweight="bold")
+
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as exc:
+        logger.warning("Could not generate Sankey chart: %s", exc)
+        return None
+
+
 def _charts_html(stats_list: list[dict], matrices: list[dict], fig_offset: int = 3) -> str:
     import base64  # noqa: PLC0415
 
@@ -486,6 +705,25 @@ def _charts_html(stats_list: list[dict], matrices: list[dict], fig_offset: int =
   <p class="chart-caption">
     Net gain (green) or loss (red) in km² per land cover class over the analysis period.
     Classes with change &lt;0.01 km² are omitted.
+  </p>
+</div>"""
+        )
+
+    sankey_png = _generate_sankey_png(matrices)
+    if sankey_png:
+        n += 1
+        b64 = base64.b64encode(sankey_png).decode()
+        from_y = matrices[0]["from_year"] if matrices else "?"
+        to_y   = matrices[0]["to_year"]   if matrices else "?"
+        sections.append(
+            f"""<div class="chart-block">
+  <h3>Figure {n} — Land Cover Transition Flow ({from_y}–{to_y})</h3>
+  <img src="data:image/png;base64,{b64}" alt="Alluvial Sankey diagram"/>
+  <p class="chart-caption">
+    Full alluvial (Sankey) diagram showing all land cover transitions including stable
+    (same-class) flows. Ribbon width is proportional to area in km².
+    Stable ribbons are shown at higher opacity; cross-class transitions at lower opacity.
+    Source: ICIMOD Nepal Land Cover · EPSG:32645 · pixel-level transition matrix.
   </p>
 </div>"""
         )
