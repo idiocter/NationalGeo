@@ -220,8 +220,6 @@ export default function MunicipalityPage() {
               <section className="border-t border-gray-100 pt-4">
                 <ReportDownload
                   result={result}
-                  comparisonMapUrl={api.analysis.comparisonMapUrl(jobId)}
-                  changeMapUrl={api.analysis.changeMapUrl(jobId)}
                   pdfUrl={api.analysis.reportPdfUrl(jobId)}
                   xlsxUrl={api.analysis.reportXlsxUrl(jobId)}
                 />

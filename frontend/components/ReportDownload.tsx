@@ -6,8 +6,6 @@ interface Props {
   result: JobResult;
   pdfUrl?: string;
   xlsxUrl?: string;
-  comparisonMapUrl?: string;
-  changeMapUrl?: string;
 }
 
 const REPORT_FORMATS = [
@@ -34,32 +32,11 @@ const REPORT_FORMATS = [
   },
 ] as const;
 
-const MAP_ITEMS = [
-  {
-    key: "comparison_map" as const,
-    urlKey: "comparisonMapUrl" as const,
-    label: "Comparison Map",
-    description: `Side-by-side ${"{from}"} vs ${"{to}"} land cover`,
-    filename: "comparison_map.png",
-  },
-  {
-    key: "change_map" as const,
-    urlKey: "changeMapUrl" as const,
-    label: "Change Map",
-    description: "Gain / loss spatial overlay",
-    filename: "change_map.png",
-  },
-] as const;
-
-export function ReportDownload({ result, pdfUrl, xlsxUrl, comparisonMapUrl, changeMapUrl }: Props) {
+export function ReportDownload({ result, pdfUrl, xlsxUrl }: Props) {
   // Always prefer explicit full URLs passed as props over relative URLs stored in artefacts
   const reportUrls: Record<string, string | undefined> = {
     pdf:  pdfUrl,
     xlsx: xlsxUrl,
-  };
-  const mapUrls: Record<string, string | undefined> = {
-    comparisonMapUrl,
-    changeMapUrl,
   };
 
   return (
@@ -68,7 +45,7 @@ export function ReportDownload({ result, pdfUrl, xlsxUrl, comparisonMapUrl, chan
         Download
       </h3>
 
-      {/* Report files */}
+      {/* Report files (maps are downloadable individually in the Report Maps section) */}
       <div className="grid grid-cols-2 gap-2">
         {REPORT_FORMATS.map(({ key, label, description, icon }) => {
           const url = reportUrls[key] ?? result.artefacts?.[key]?.url;
@@ -93,57 +70,6 @@ export function ReportDownload({ result, pdfUrl, xlsxUrl, comparisonMapUrl, chan
             </a>
           );
         })}
-      </div>
-
-      {/* Map images — shown as live preview tiles with download button */}
-      <div>
-        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-          Map images
-        </p>
-        <div className="space-y-2">
-          {MAP_ITEMS.map(({ key, urlKey, label, description, filename }) => {
-            const url = mapUrls[urlKey] ?? result.artefacts?.[key]?.url;
-            return (
-              <div key={key} className="rounded-xl border border-gray-200 overflow-hidden bg-white">
-                {/* Preview thumbnail */}
-                {url ? (
-                  <img
-                    src={url}
-                    alt={label}
-                    className="w-full object-cover"
-                    style={{ maxHeight: 90 }}
-                  />
-                ) : (
-                  <div className="w-full h-16 bg-gray-100 flex items-center justify-center text-[10px] text-gray-400">
-                    Not generated
-                  </div>
-                )}
-                {/* Caption + download */}
-                <div className="flex items-center justify-between px-2.5 py-1.5">
-                  <div>
-                    <div className="text-[11px] font-semibold text-gray-700">{label}</div>
-                    <div className="text-[10px] text-gray-400">{description}</div>
-                  </div>
-                  <a
-                    href={url}
-                    download={filename}
-                    aria-label={`Download ${label}`}
-                    className={`shrink-0 ml-2 w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                      url
-                        ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
-                        : "bg-gray-50 text-gray-300 cursor-not-allowed pointer-events-none border border-gray-100"
-                    }`}
-                  >
-                    <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M8 2v8m0 0l-3-3m3 3l3-3"/>
-                      <path d="M3 12h10"/>
-                    </svg>
-                  </a>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
       {result.validation?.verdict === "warn" && (

@@ -9,7 +9,7 @@ interface Props {
   result: JobResult;
 }
 
-type FigureKey = "trend_chart" | "comparison_map" | "sankey" | "forest_change_4class" | "change_map";
+type FigureKey = "comparison_map" | "forest_change_4class" | "change_map";
 
 interface FigureDef {
   key: FigureKey;
@@ -19,28 +19,15 @@ interface FigureDef {
   filename: string;
 }
 
-// Order mirrors the PDF report layout
+// Map figures only — trend & transition (Sankey) are shown as the interactive
+// charts above, so the static versions are not duplicated here.
 const FIGURES: FigureDef[] = [
   {
-    key: "trend_chart",
-    label: "Land Cover Area Trend",
-    caption: "Major classes (larger area) and minor classes (smaller area) on separate panels.",
-    url: (id) => api.analysis.trendChartUrl(id),
-    filename: "trend_chart.png",
-  },
-  {
     key: "comparison_map",
-    label: "Land Cover Comparison",
-    caption: "Side-by-side land cover for the baseline vs. analysis year, with north arrows.",
+    label: "Land Cover Comparison Map",
+    caption: "Side-by-side land cover for the baseline vs. analysis year, with north arrow and scale bar.",
     url: (id) => api.analysis.comparisonMapUrl(id),
     filename: "comparison_map.png",
-  },
-  {
-    key: "sankey",
-    label: "Land Cover Transition Flow",
-    caption: "Alluvial (Sankey) diagram of all transitions including stable cover. Ribbon width ∝ area.",
-    url: (id) => api.analysis.sankeyUrl(id),
-    filename: "sankey.png",
   },
   {
     key: "forest_change_4class",
@@ -52,7 +39,7 @@ const FIGURES: FigureDef[] = [
   {
     key: "change_map",
     label: "Change Detection Map",
-    caption: "Spatial distribution of gain / loss between the two years.",
+    caption: "Spatial distribution of gain / loss within the municipality boundary.",
     url: (id) => api.analysis.changeMapUrl(id),
     filename: "change_map.png",
   },
@@ -72,9 +59,9 @@ export function ReportFigures({ jobId }: Props) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-gray-800">Report Figures</h3>
+        <h3 className="text-base font-semibold text-gray-800">Report Maps</h3>
         <p className="text-xs text-gray-400 mt-0.5">
-          Full-resolution figures from the generated report — click any figure to open full size.
+          Full-resolution maps from the generated report — click any map to open full size, or use the PNG link to download.
         </p>
       </div>
 

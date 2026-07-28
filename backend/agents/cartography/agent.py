@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 
 import numpy as np
@@ -88,10 +89,49 @@ def _add_north_arrow(ax, x: float = 0.95, y: float = 0.95, size: float = 0.06) -
     )
 
 
+def _nice_round(x: float) -> float:
+    """Largest 1/2/5 × 10ⁿ value ≤ x (for a tidy scale-bar length)."""
+    if x <= 0:
+        return 0.0
+    exp  = math.floor(math.log10(x))
+    base = 10 ** exp
+    for m in (5, 2, 1):
+        if base * m <= x:
+            return base * m
+    return base
+
+
+def _add_scale_bar(ax, img_w_px: int, img_h_px: int, px_size_m: float | None) -> None:
+    """Draw a scale bar (lower-left, in image/pixel data coords) sized to a round distance."""
+    if not px_size_m or px_size_m <= 0 or img_w_px <= 0:
+        return
+    # Aim for a bar spanning ~22% of the image width, rounded to a nice value
+    target_m = img_w_px * px_size_m * 0.22
+    nice_m   = _nice_round(target_m)
+    if nice_m <= 0:
+        return
+    bar_px = nice_m / px_size_m
+
+    x0 = img_w_px * 0.05
+    y0 = img_h_px * 0.95
+    tick = img_h_px * 0.012
+
+    # Main bar + end ticks
+    ax.plot([x0, x0 + bar_px], [y0, y0], color="#1e293b", lw=2, solid_capstyle="butt", zorder=6)
+    ax.plot([x0, x0], [y0 - tick, y0 + tick], color="#1e293b", lw=2, zorder=6)
+    ax.plot([x0 + bar_px, x0 + bar_px], [y0 - tick, y0 + tick], color="#1e293b", lw=2, zorder=6)
+
+    label = f"{nice_m / 1000:g} km" if nice_m >= 1000 else f"{nice_m:g} m"
+    ax.text(
+        x0 + bar_px / 2, y0 - tick * 1.6, label,
+        ha="center", va="bottom", fontsize=8, color="#1e293b", zorder=6,
+    )
+
+
 def _render_comparison(
     band0: np.ndarray, band1: np.ndarray, y0: int, y1: int,
     municipality_name: str, dataset_version: str, job_id: str,
-    out_path: Path,
+    out_path: Path, px_size_m: float | None = None,
 ) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -100,11 +140,12 @@ def _render_comparison(
 
     rgb0 = _band_to_rgb(band0)
     rgb1 = _band_to_rgb(band1)
+    h, w = band0.shape
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 7), facecolor="white")
     fig.suptitle(
         f"{municipality_name} — Land Cover Comparison\n"
-        f"Source: {dataset_version} · CRS: EPSG:4326 · NGLIP job {job_id[:8]}",
+        f"Source: {dataset_version} · NGLIP job {job_id[:8]}",
         fontsize=9, color="#444",
     )
 
@@ -113,6 +154,7 @@ def _render_comparison(
         ax.set_title(str(yr), fontsize=11, fontweight="bold")
         ax.axis("off")
         _add_north_arrow(ax, x=0.96, y=0.94, size=0.07)
+        _add_scale_bar(ax, w, h, px_size_m)
 
     # Shared legend — only classes present in either band — centered between panels
     present_codes = sorted(set(np.unique(band0)) | set(np.unique(band1)))
@@ -138,6 +180,7 @@ def _render_comparison(
 def _render_forest_change_4class(
     band0: np.ndarray, band1: np.ndarray, y0: int, y1: int,
     municipality_name: str, job_id: str, out_path: Path,
+    px_size_m: float | None = None,
 ) -> None:
     """4-class forest change map: Stable Non-Forest, Stable Forest, Loss, Gain."""
     import matplotlib
@@ -181,6 +224,7 @@ def _render_forest_change_4class(
     )
     ax.axis("off")
     _add_north_arrow(ax, x=0.96, y=0.94, size=0.07)
+    _add_scale_bar(ax, w, h, px_size_m)
 
     patches = [
         mpatches.Patch(
@@ -213,6 +257,7 @@ def _render_forest_change_4class(
 def _render_change_map(
     band0: np.ndarray, band1: np.ndarray, y0: int, y1: int,
     municipality_name: str, job_id: str, out_path: Path,
+    px_size_m: float | None = None,
 ) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -220,37 +265,47 @@ def _render_change_map(
     import matplotlib.patches as mpatches
 
     h, w = band0.shape
-    rgb = np.full((h, w, 3), _CHANGE_UNCHANGED, dtype=np.uint8)
+    # White background so the municipality silhouette (boundary) is visible;
+    # only in-boundary pixels are coloured.
+    rgb = np.full((h, w, 3), (255, 255, 255), dtype=np.uint8)
 
-    # Mark changed pixels (exclude nodata → nodata)
-    changed = (band0 != band1) & (band0 != 0) & (band1 != 0)
+    valid   = (band0 != 0) & (band1 != 0)          # inside the municipality boundary
+    changed = valid & (band0 != band1)
 
-    # Forest/Grassland loss → red; gain of Cultivated/Settlement → orange
+    # Forest/Grassland loss → red; gain of Cultivated/Settlement → green
     loss_codes = {4, 5, 9}   # Forest, Grassland, Open Woodland
     gain_codes = {7, 8}       # Cultivated, Settlement
 
     loss_mask = changed & np.isin(band0, list(loss_codes)) & ~np.isin(band1, list(loss_codes))
     gain_mask = changed & np.isin(band1, list(gain_codes)) & ~np.isin(band0, list(gain_codes))
 
-    rgb[changed] = _CHANGE_UNCHANGED  # any change = grey base
-    rgb[loss_mask] = _CHANGE_LOSS
-    rgb[gain_mask] = _CHANGE_GAIN
+    rgb[valid & ~changed] = _CHANGE_UNCHANGED   # unchanged land inside boundary
+    rgb[changed]          = _CHANGE_UNCHANGED   # other changes = grey base
+    rgb[loss_mask]        = _CHANGE_LOSS
+    rgb[gain_mask]        = _CHANGE_GAIN
+
+    total_px = int(valid.sum()) or 1
+    pct_loss = 100.0 * int(loss_mask.sum()) / total_px
+    pct_gain = 100.0 * int(gain_mask.sum()) / total_px
 
     fig, ax = plt.subplots(figsize=(8, 8), facecolor="white")
     ax.imshow(rgb)
     ax.set_title(
         f"{municipality_name} — Change Map {y0}→{y1}\n"
         f"NGLIP job {job_id[:8]}",
-        fontsize=10,
+        fontsize=10, fontweight="bold",
     )
     ax.axis("off")
+    _add_north_arrow(ax, x=0.96, y=0.94, size=0.07)
+    _add_scale_bar(ax, w, h, px_size_m)
 
     patches = [
-        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_GAIN),      label="Vegetation/agricultural gain"),
-        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_LOSS),      label="Vegetation/forest loss"),
+        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_GAIN),      label=f"Vegetation / agricultural gain ({pct_gain:.1f}%)"),
+        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_LOSS),      label=f"Vegetation / forest loss ({pct_loss:.1f}%)"),
         mpatches.Patch(color=tuple(v/255 for v in _CHANGE_UNCHANGED), label="Unchanged"),
     ]
-    ax.legend(handles=patches, loc="lower right", fontsize=8, framealpha=0.9)
+    ax.legend(handles=patches, loc="upper right", fontsize=8, framealpha=0.95,
+              edgecolor="#d1d5db", title="Change class", title_fontsize=8.5)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -299,19 +354,31 @@ class CartographyAgent:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         artefact_urls: dict[str, str] = {}
+        # Ground resolution (metres/pixel) captured from the raster transform,
+        # used to draw a scale bar on the maps.
+        px_size_m: float | None = None
 
         def _read_band(year: int) -> np.ndarray | None:
+            nonlocal px_size_m
             cog = Path(settings.object_store_path) / "landcover" / dataset_ver / f"{year}.tif"
             if not cog.exists():
                 return None
             with rasterio.open(cog) as src:
                 epsg = src.crs.to_epsg()
                 geom_r = reproject_geometry(geom_4326, from_epsg=4326, to_epsg=epsg)
-                masked, _ = rasterio_mask(
+                masked, out_transform = rasterio_mask(
                     src, [geom_r.__geo_interface__],
                     crop=True, all_touched=False, filled=True,
                     nodata=int(src.nodata) if src.nodata is not None else 0,
                 )
+                if px_size_m is None:
+                    px = abs(out_transform.a)
+                    if src.crs.is_geographic:
+                        # degrees → metres at the geometry centroid latitude
+                        lat = geom_4326.centroid.y
+                        px_size_m = px * 111_320.0 * math.cos(math.radians(lat))
+                    else:
+                        px_size_m = px  # projected CRS is already in metres
             return masked[0]
 
         band0 = _read_band(from_year)
@@ -329,15 +396,15 @@ class CartographyAgent:
 
             _render_comparison(
                 band0, band1, from_year, to_year,
-                municipality_name, dataset_ver, job_id, comp_path,
+                municipality_name, dataset_ver, job_id, comp_path, px_size_m,
             )
             _render_change_map(
                 band0, band1, from_year, to_year,
-                municipality_name, job_id, change_path,
+                municipality_name, job_id, change_path, px_size_m,
             )
             _render_forest_change_4class(
                 band0, band1, from_year, to_year,
-                municipality_name, job_id, forest_4cls_path,
+                municipality_name, job_id, forest_4cls_path, px_size_m,
             )
 
             artefact_urls["comparison_map"]       = {"url": f"/jobs/{job_id}/maps/comparison_map.png"}
