@@ -344,6 +344,29 @@ class CartographyAgent:
             artefact_urls["change_map"]            = {"url": f"/jobs/{job_id}/maps/change_map.png"}
             artefact_urls["forest_change_4class"]  = {"url": f"/jobs/{job_id}/maps/forest_change_4class.png"}
 
+        # Chart PNGs (trend + Sankey) — same figures used in the PDF, saved as
+        # standalone files so the website can display them. These only need the
+        # statistics / change matrices, so they render even when COG bands are
+        # unavailable.
+        stats_list = result.get("statistics", [])
+        try:
+            from backend.agents.report.agent import (  # noqa: PLC0415
+                _generate_sankey_png,
+                _generate_trend_chart_png,
+            )
+
+            trend_png = _generate_trend_chart_png(stats_list)
+            if trend_png:
+                (out_dir / "trend_chart.png").write_bytes(trend_png)
+                artefact_urls["trend_chart"] = {"url": f"/jobs/{job_id}/maps/trend_chart.png"}
+
+            sankey_png = _generate_sankey_png(matrices)
+            if sankey_png:
+                (out_dir / "sankey.png").write_bytes(sankey_png)
+                artefact_urls["sankey"] = {"url": f"/jobs/{job_id}/maps/sankey.png"}
+        except Exception as exc:
+            logger.warning("Chart PNG generation failed (job %s): %s", job_id, exc)
+
         # Persist artefact URLs into jobs.result
         if artefact_urls:
             existing = result.get("artefacts", {})
