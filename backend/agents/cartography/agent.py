@@ -123,27 +123,31 @@ def _add_scale_bar(ax, img_w_px: int, img_h_px: int, px_size_m: float | None) ->
         return
     bar_px = nice_m / px_size_m
 
-    # Top-left placement, opposite the north arrow (top-right) and clear of the
-    # legend, which sits in the lower part of the map.
-    x0 = img_w_px * 0.04
-    y0 = img_h_px * 0.07
-    tick = img_h_px * 0.014
+    # Draw the scale bar just BELOW the map image (left-aligned), so it never
+    # overlaps the municipality regardless of the shape's aspect ratio. The bar
+    # length stays in image/pixel data units, so it still represents the true
+    # map scale; clip_on=False lets it render outside the image extent.
+    x0 = 0.0
+    y0 = img_h_px + img_h_px * 0.045
+    tick = img_h_px * 0.016
 
     halo  = [pe.Stroke(linewidth=4.5, foreground="white"), pe.Normal()]
     dark  = "#0f172a"
 
     # Main bar + end ticks (thicker, with white halo for contrast)
-    ax.plot([x0, x0 + bar_px], [y0, y0], color=dark, lw=3,
-            solid_capstyle="butt", zorder=6, path_effects=halo)
-    ax.plot([x0, x0], [y0 - tick, y0 + tick], color=dark, lw=3, zorder=6, path_effects=halo)
+    ax.plot([x0, x0 + bar_px], [y0, y0], color=dark, lw=3, solid_capstyle="butt",
+            zorder=6, clip_on=False, path_effects=halo)
+    ax.plot([x0, x0], [y0 - tick, y0 + tick], color=dark, lw=3, zorder=6,
+            clip_on=False, path_effects=halo)
     ax.plot([x0 + bar_px, x0 + bar_px], [y0 - tick, y0 + tick], color=dark, lw=3,
-            zorder=6, path_effects=halo)
+            zorder=6, clip_on=False, path_effects=halo)
 
     label = f"{nice_m / 1000:g} km" if nice_m >= 1000 else f"{nice_m:g} m"
-    # Label sits below the bar (bar is near the top edge)
+    # Label sits below the bar
     ax.text(
-        x0 + bar_px / 2, y0 + tick * 2.4, label,
+        x0 + bar_px / 2, y0 + tick * 2.6, label,
         ha="center", va="top", fontsize=10, fontweight="bold", color=dark, zorder=6,
+        clip_on=False,
         path_effects=[pe.Stroke(linewidth=3, foreground="white"), pe.Normal()],
     )
 
@@ -192,12 +196,13 @@ def _render_comparison(
         )
         for c in present_codes if c != 0
     ]
-    fig.legend(handles=patches, loc="lower center", ncol=4, fontsize=7.5,
-               framealpha=0.95, edgecolor="#d1d5db",
-               bbox_to_anchor=(0.5, 0.0), title="Land Cover Class",
-               title_fontsize=7.5)
-
-    plt.tight_layout(rect=[0, 0.09, 1, 0.96])
+    # Reserve a bottom band for the legend (above the footer) so the two never
+    # overlap. tight_layout keeps the panels above the reserved band.
+    plt.tight_layout(rect=[0, 0.14, 1, 0.95])
+    fig.legend(handles=patches, loc="lower center", ncol=4, fontsize=8,
+               framealpha=1.0, facecolor="white", edgecolor="#d1d5db",
+               bbox_to_anchor=(0.5, 0.045), title="Land Cover Class",
+               title_fontsize=8)
     _add_footer(fig, footer)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
