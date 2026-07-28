@@ -83,7 +83,7 @@ def analyse_year(
         geom_raster = reproject_geometry(geom_4326, from_epsg=4326, to_epsg=raster_epsg)
 
         # Windowed read with spatial mask — all_touched=False is mandatory
-        masked_data, _ = rasterio_mask(
+        masked_data, out_transform = rasterio_mask(
             src,
             [geom_raster.__geo_interface__],
             crop=True,
@@ -97,20 +97,35 @@ def analyse_year(
         crs_label = f"EPSG:{raster_epsg}"
 
     band = masked_data[0]  # single-band land-cover raster
-    total_pixels = int(band.size)
 
-    # Raster fill-value pixels (outside municipality boundary after masking)
-    fill_mask = band == nodata_fill
-    cloud_or_nodata_count = int(fill_mask.sum())
+    # crop=True returns the geometry's bounding box, and every pixel outside the
+    # (irregular) municipality polygon is set to the fill value. Build an explicit
+    # in-polygon mask so the nodata metric measures genuinely missing data INSIDE
+    # the boundary rather than the bounding-box padding — otherwise every
+    # non-rectangular municipality falsely trips the QA gate (e.g. Kathmandu read
+    # 42.7% nodata, which was entirely bbox padding; true nodata was 0.0%).
+    from rasterio.features import geometry_mask  # noqa: PLC0415
+    inside = geometry_mask(
+        [geom_raster.__geo_interface__],
+        out_shape=band.shape,
+        transform=out_transform,
+        invert=True,            # True where the pixel lies inside the polygon
+        all_touched=False,
+    )
+    total_pixels = int(inside.sum())  # denominator = municipality, not the bbox
+
+    # Missing data inside the boundary = raster fill value or semantic class 0
+    missing_inside = inside & ((band == nodata_fill) | (band == 0))
+    cloud_or_nodata_count = int(missing_inside.sum())
     cloud_or_nodata_pct = 100.0 * cloud_or_nodata_count / total_pixels if total_pixels > 0 else 0.0
 
-    # Pixels inside the boundary
-    valid_band = band[~fill_mask]
+    # Classified pixels inside the boundary (exclude fill value and semantic 0)
+    valid_band = band[inside & (band != nodata_fill) & (band != 0)]
     codes, counts = np.unique(valid_band, return_counts=True)
     histogram: dict[int, int] = {int(c): int(n) for c, n in zip(codes, counts)}
 
-    # Semantic NoData (class code 0 within valid area) — separate from raster fill
-    semantic_nodata = histogram.pop(0, 0)
+    # Semantic NoData (class code 0 within the boundary)
+    semantic_nodata = int((inside & (band == 0)).sum())
 
     # Unexpected class codes
     data_quality_flags: list[str] = []
