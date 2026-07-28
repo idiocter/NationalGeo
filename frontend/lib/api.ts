@@ -10,6 +10,13 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Cache-buster for rendered landcover/change PNGs. The overlay endpoint sends
+// Cache-Control: max-age=3600, and the URL is otherwise stable per municipality
+// + year, so browsers/proxies keep serving old tiles after a rendering change
+// (e.g. the forest-definition update). Bump this whenever the server-side
+// palette / forest codes / rendering logic changes to invalidate those caches.
+const MAP_RENDER_VERSION = "2";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -27,9 +34,9 @@ export const api = {
     list:   () => request<Municipality[]>("/municipalities"),
     get:    (id: string) => request<Municipality>(`/municipalities/${id}`),
     landcoverPngUrl: (id: string, year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/municipalities/${id}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard`,
+      `${BASE_URL}/municipalities/${id}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard&rv=${MAP_RENDER_VERSION}`,
     changePngUrl: (id: string, fromYear: number, toYear: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/municipalities/${id}/landcover/change/${fromYear}-${toYear}.png?dataset_version=${datasetVersion}`,
+      `${BASE_URL}/municipalities/${id}/landcover/change/${fromYear}-${toYear}.png?dataset_version=${datasetVersion}&rv=${MAP_RENDER_VERSION}`,
   },
 
   provinces: {
@@ -38,7 +45,7 @@ export const api = {
     districts: (name: string) => request<DistrictInfo[]>(`/provinces/${encodeURIComponent(name)}/districts`),
     municipalities: (name: string) => request<Municipality[]>(`/provinces/${encodeURIComponent(name)}/municipalities`),
     landcoverPngUrl: (name: string, year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/provinces/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard`,
+      `${BASE_URL}/provinces/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard&rv=${MAP_RENDER_VERSION}`,
   },
 
   districts: {
@@ -46,13 +53,13 @@ export const api = {
     get:  (name: string) => request<DistrictInfo>(`/districts/${encodeURIComponent(name)}`),
     municipalities: (name: string) => request<Municipality[]>(`/districts/${encodeURIComponent(name)}/municipalities`),
     landcoverPngUrl: (name: string, year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/districts/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard`,
+      `${BASE_URL}/districts/${encodeURIComponent(name)}/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard&rv=${MAP_RENDER_VERSION}`,
   },
 
   country: {
     get: () => request<{ name: string; municipality_count: number; district_count: number; province_count: number; total_area_km2: number; population: number }>("/country"),
     landcoverPngUrl: (year: number, datasetVersion = "landcover-v3.1") =>
-      `${BASE_URL}/country/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard`,
+      `${BASE_URL}/country/landcover/${year}.png?dataset_version=${datasetVersion}&mode=standard&rv=${MAP_RENDER_VERSION}`,
   },
 
   analysis: {
@@ -63,11 +70,11 @@ export const api = {
     reportPdfUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.pdf`,
     reportXlsxUrl:     (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.xlsx`,
     downloadZipUrl:    (jobId: string) => `${BASE_URL}/jobs/${jobId}/download.zip`,
-    comparisonMapUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/comparison_map.png`,
-    changeMapUrl:          (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/change_map.png`,
-    forestChangeMapUrl:    (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/forest_change_4class.png`,
-    trendChartUrl:         (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/trend_chart.png`,
-    sankeyUrl:             (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/sankey.png`,
+    comparisonMapUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/comparison_map.png?rv=${MAP_RENDER_VERSION}`,
+    changeMapUrl:          (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/change_map.png?rv=${MAP_RENDER_VERSION}`,
+    forestChangeMapUrl:    (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/forest_change_4class.png?rv=${MAP_RENDER_VERSION}`,
+    trendChartUrl:         (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/trend_chart.png?rv=${MAP_RENDER_VERSION}`,
+    sankeyUrl:             (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/sankey.png?rv=${MAP_RENDER_VERSION}`,
   },
 
   dashboard: {
