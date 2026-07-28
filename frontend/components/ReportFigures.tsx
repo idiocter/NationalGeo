@@ -47,8 +47,8 @@ const FIGURES: FigureDef[] = [
   },
 ];
 
-// Forest = Forest, Grassland, Shrubland, Open Woodland (matches the backend map)
-const FOREST_SET = new Set([4, 5, 6, 9]);
+// Forest = Forest, Open Woodland — true tree cover only (matches the backend map)
+const FOREST_SET = new Set([4, 9]);
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 interface Chip { label: string; value: string; tone?: "emerald" | "red" | "blue" | "gray" }
