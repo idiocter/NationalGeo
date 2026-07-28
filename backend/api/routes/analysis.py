@@ -11,6 +11,7 @@ from uuid import uuid4
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -330,29 +331,83 @@ async def download_report_xlsx(job_id: str, db: AsyncSession = Depends(get_sessi
     )
 
 
+# Figures that need only the job result (stats / change matrix) — no COG rasters
+_CHART_FIGURES = {"trend_chart.png", "sankey.png"}
+# Figures that need the cartography renderer (COG rasters + geometry)
+_MAP_FIGURES = {"comparison_map.png", "change_map.png", "forest_change_4class.png"}
+_ALLOWED_FIGURES = _CHART_FIGURES | _MAP_FIGURES
+
+
+def _ensure_figure_file(
+    job_id: str, filename: str, dataset_version: str, job_result: dict,
+) -> None:
+    """Generate a single report figure on-demand if it is missing on disk.
+
+    Charts (trend / Sankey) are rendered directly from the job result.
+    Maps run the cartography renderer, which regenerates all map + chart PNGs
+    and refreshes the artefact URLs in jobs.result.
+    Runs in a threadpool — safe to do blocking I/O / rasterio here.
+    """
+    out_dir = Path(settings.object_store_path) / "reports" / job_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / filename
+    if target.exists():
+        return
+
+    if filename == "trend_chart.png":
+        from backend.agents.report.agent import _generate_trend_chart_png  # noqa: PLC0415
+        png = _generate_trend_chart_png(job_result.get("statistics", []))
+        if png:
+            target.write_bytes(png)
+        return
+
+    if filename == "sankey.png":
+        from backend.agents.report.agent import _generate_sankey_png  # noqa: PLC0415
+        png = _generate_sankey_png(job_result.get("change_matrix", []))
+        if png:
+            target.write_bytes(png)
+        return
+
+    # Map figures — render via the cartography agent (also (re)creates charts)
+    from backend.agents.cartography.agent import CartographyAgent  # noqa: PLC0415
+    from backend.database_sync import get_sync_db  # noqa: PLC0415
+    with get_sync_db() as sdb:
+        CartographyAgent(sdb).render(job_id, {"dataset_version": dataset_version})
+
+
 @router.get("/jobs/{job_id}/maps/{filename}")
 async def serve_map_file(
     job_id: str, filename: str, db: AsyncSession = Depends(get_session)
 ) -> FileResponse:
-    """Serve a generated map PNG (comparison_map.png, change_map.png)."""
-    result = await db.execute(
-        text("SELECT id FROM jobs WHERE id = :id"),
-        {"id": job_id},
-    )
-    if result.first() is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+    """Serve a generated report figure PNG, generating it on-demand if missing.
 
-    # Restrict to known safe filenames
-    allowed = {
-        "comparison_map.png", "change_map.png", "forest_change_4class.png",
-        "trend_chart.png", "sankey.png",
-    }
-    if filename not in allowed:
-        raise HTTPException(status_code=400, detail=f"Unknown map file '{filename}'")
+    This lets figures appear for jobs that completed before the figure pipeline
+    existed (e.g. cache-hit jobs) without needing to re-run the analysis.
+    """
+    if filename not in _ALLOWED_FIGURES:
+        raise HTTPException(status_code=400, detail=f"Unknown figure file '{filename}'")
+
+    row = (await db.execute(
+        text("SELECT dataset_version, result FROM jobs WHERE id = :id"),
+        {"id": job_id},
+    )).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
 
     map_path = Path(settings.object_store_path) / "reports" / job_id / filename
     if not map_path.exists():
-        raise HTTPException(status_code=404, detail="Map not yet generated")
+        try:
+            await run_in_threadpool(
+                _ensure_figure_file,
+                job_id, filename,
+                row["dataset_version"] or "landcover-v3.1",
+                row["result"] or {},
+            )
+        except Exception as exc:
+            logger.warning("On-demand figure generation failed (%s/%s): %s", job_id, filename, exc)
+
+    if not map_path.exists():
+        raise HTTPException(status_code=404, detail="Figure could not be generated")
 
     return FileResponse(str(map_path), media_type="image/png")
 
