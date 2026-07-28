@@ -17,6 +17,7 @@ interface FigureDef {
   caption: string;
   url: (jobId: string) => string;
   filename: string;
+  wide?: boolean;   // spans the full width (for the 2:1 comparison map)
 }
 
 // Map figures only — trend & transition (Sankey) are shown as the interactive
@@ -28,6 +29,7 @@ const FIGURES: FigureDef[] = [
     caption: "Side-by-side land cover for the baseline vs. analysis year, with north arrow and scale bar.",
     url: (id) => api.analysis.comparisonMapUrl(id),
     filename: "comparison_map.png",
+    wide: true,
   },
   {
     key: "forest_change_4class",
@@ -65,11 +67,11 @@ export function ReportFigures({ jobId }: Props) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {visible.map((f) => {
           const src = f.url(jobId);
           return (
-            <figure key={f.key} className="space-y-2">
+            <figure key={f.key} className={`space-y-2 ${f.wide ? "lg:col-span-2" : ""}`}>
               <div className="flex items-center justify-between">
                 <figcaption className="text-sm font-semibold text-gray-700">{f.label}</figcaption>
                 <a
@@ -89,8 +91,8 @@ export function ReportFigures({ jobId }: Props) {
               </div>
               <a href={src} target="_blank" rel="noopener noreferrer"
                  title="Open full size"
-                 className="flex items-center justify-center rounded-lg border border-gray-200
-                            overflow-hidden bg-gray-50 p-2 hover:border-blue-400 transition-colors">
+                 className="block rounded-lg border border-gray-200 overflow-hidden bg-gray-50
+                            hover:border-blue-400 transition-colors">
                 {/* Placeholder keeps height while the on-demand PNG is generated */}
                 {!loaded[f.key] && (
                   <div className="w-full h-48 flex items-center justify-center gap-2 text-xs text-gray-400">
@@ -98,14 +100,13 @@ export function ReportFigures({ jobId }: Props) {
                     Rendering {f.label}…
                   </div>
                 )}
-                {/* Capped display height so square maps don't dominate the page;
-                    click opens the full-resolution image. */}
+                {/* Image fills its grid cell; the wide comparison map spans both
+                    columns. Click opens the full-resolution image. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={src}
                   alt={f.label}
-                  className={`max-h-[360px] w-auto max-w-full object-contain mx-auto
-                              ${loaded[f.key] ? "block" : "hidden"}`}
+                  className={`w-full h-auto object-contain ${loaded[f.key] ? "block" : "hidden"}`}
                   onLoad={() => setLoaded((prev) => ({ ...prev, [f.key]: true }))}
                   onError={() => setFailed((prev) => ({ ...prev, [f.key]: true }))}
                 />
