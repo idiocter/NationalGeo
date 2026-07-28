@@ -28,7 +28,7 @@ _MPL_COLOURS: dict[int, str] = {
     8: "#d63b2f", 9: "#5da06f", 10: "#8b7355", 11: "#b0b0b0",
 }
 
-_FOREST_CODES_RPT: frozenset[int] = frozenset({4, 5, 6, 9})
+_FOREST_CODES_RPT: frozenset[int] = frozenset({4, 9})  # Forest, Open Woodland
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -148,11 +148,11 @@ def _maps_html(out_dir: Path, from_year: int, to_year: int, municipality_name: s
   <img src="data:image/png;base64,{b64}" alt="4-class forest change map"/>
   <p class="map-caption">
     Four-class forest change map for {municipality_name} ({from_year}–{to_year}).
-    <b style="color:#1d4ed8">Dark blue</b> = Forest Area Gain (non-forest converted to forest/shrub/grassland/open woodland);
+    <b style="color:#1d4ed8">Dark blue</b> = Forest Area Gain (non-forest converted to forest/open woodland);
     <b style="color:#dc2626">Red</b> = Forest Area Loss;
     <b style="color:#2d6a4f">Dark green</b> = Stable Forest;
     <b style="color:#a8c8e8">Light blue</b> = Stable Non-Forest.
-    Forest defined as codes 4 (Forest), 5 (Grassland), 6 (Shrubland), 9 (Open Woodland).
+    Forest defined as codes 4 (Forest) and 9 (Open Woodland).
     Percentages reflect share of valid (non-nodata) pixels.
     Source: ICIMOD Nepal Land Cover · EPSG:32645 · 30 m resolution.
   </p>
@@ -687,7 +687,7 @@ def _charts_html(stats_list: list[dict], matrices: list[dict], fig_offset: int =
   <h3>Figure {n} — Forest vs Non-Forest Cover Trend</h3>
   <img src="data:image/png;base64,{b64}" alt="Forest vs non-forest trend"/>
   <p class="chart-caption">
-    Forest area (Forest, Grassland, Shrubland, Open Woodland — codes 4, 5, 6, 9)
+    Forest area (Forest, Open Woodland — codes 4, 9)
     versus all other land cover classes over time.
     Source: ICIMOD Nepal Land Cover · equal-area projection EPSG:32645.
   </p>

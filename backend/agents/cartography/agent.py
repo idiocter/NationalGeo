@@ -52,8 +52,8 @@ _FC_STABLE_FOREST    = ( 45, 106,  79)   # dark green
 _FC_FOREST_LOSS      = (220,  38,  38)   # red
 _FC_FOREST_GAIN      = ( 29,  78, 216)   # dark blue
 
-# Codes considered "forest" for the 4-class change map
-_FOREST_CODES: frozenset[int] = frozenset({4, 5, 6, 9})
+# Codes considered "forest" — true tree cover only: Forest (4) + Open Woodland (9)
+_FOREST_CODES: frozenset[int] = frozenset({4, 9})
 
 
 def _band_to_rgb(band: np.ndarray) -> np.ndarray:
@@ -69,23 +69,28 @@ def _add_north_arrow(ax, x: float = 0.95, y: float = 0.95, size: float = 0.06) -
     import matplotlib.patches as mpatches  # noqa: PLC0415
     from matplotlib.patches import FancyArrowPatch  # noqa: PLC0415
 
-    # Arrow shaft: from (x, y-size) to (x, y)
-    ax.annotate(
+    import matplotlib.patheffects as pe  # noqa: PLC0415
+
+    # Arrow shaft: from (x, y-size) to (x, y), with a white halo so it stays
+    # visible over dark forest pixels.
+    ann = ax.annotate(
         "", xy=(x, y), xytext=(x, y - size),
         xycoords="axes fraction", textcoords="axes fraction",
         arrowprops=dict(
             arrowstyle="-|>",
-            color="#1e293b",
-            lw=1.5,
-            mutation_scale=10,
+            color="#0f172a",
+            lw=2,
+            mutation_scale=13,
         ),
     )
+    ann.arrow_patch.set_path_effects([pe.Stroke(linewidth=4, foreground="white"), pe.Normal()])
     # "N" label slightly above the arrow tip
     ax.text(
         x, y + 0.025, "N",
         transform=ax.transAxes,
         ha="center", va="bottom",
-        fontsize=9, fontweight="bold", color="#1e293b",
+        fontsize=11, fontweight="bold", color="#0f172a",
+        path_effects=[pe.Stroke(linewidth=3, foreground="white"), pe.Normal()],
     )
 
 
@@ -102,7 +107,13 @@ def _nice_round(x: float) -> float:
 
 
 def _add_scale_bar(ax, img_w_px: int, img_h_px: int, px_size_m: float | None) -> None:
-    """Draw a scale bar (lower-left, in image/pixel data coords) sized to a round distance."""
+    """Draw a scale bar (lower-left, in image/pixel data coords) sized to a round distance.
+
+    A white halo (path-effect stroke) is drawn under every mark so the bar and its
+    label stay legible over dark (forest) as well as light (grey/background) pixels.
+    """
+    import matplotlib.patheffects as pe  # noqa: PLC0415
+
     if not px_size_m or px_size_m <= 0 or img_w_px <= 0:
         return
     # Aim for a bar spanning ~22% of the image width, rounded to a nice value
@@ -112,19 +123,28 @@ def _add_scale_bar(ax, img_w_px: int, img_h_px: int, px_size_m: float | None) ->
         return
     bar_px = nice_m / px_size_m
 
-    x0 = img_w_px * 0.05
-    y0 = img_h_px * 0.95
-    tick = img_h_px * 0.012
+    # Top-left placement, opposite the north arrow (top-right) and clear of the
+    # legend, which sits in the lower part of the map.
+    x0 = img_w_px * 0.04
+    y0 = img_h_px * 0.07
+    tick = img_h_px * 0.014
 
-    # Main bar + end ticks
-    ax.plot([x0, x0 + bar_px], [y0, y0], color="#1e293b", lw=2, solid_capstyle="butt", zorder=6)
-    ax.plot([x0, x0], [y0 - tick, y0 + tick], color="#1e293b", lw=2, zorder=6)
-    ax.plot([x0 + bar_px, x0 + bar_px], [y0 - tick, y0 + tick], color="#1e293b", lw=2, zorder=6)
+    halo  = [pe.Stroke(linewidth=4.5, foreground="white"), pe.Normal()]
+    dark  = "#0f172a"
+
+    # Main bar + end ticks (thicker, with white halo for contrast)
+    ax.plot([x0, x0 + bar_px], [y0, y0], color=dark, lw=3,
+            solid_capstyle="butt", zorder=6, path_effects=halo)
+    ax.plot([x0, x0], [y0 - tick, y0 + tick], color=dark, lw=3, zorder=6, path_effects=halo)
+    ax.plot([x0 + bar_px, x0 + bar_px], [y0 - tick, y0 + tick], color=dark, lw=3,
+            zorder=6, path_effects=halo)
 
     label = f"{nice_m / 1000:g} km" if nice_m >= 1000 else f"{nice_m:g} m"
+    # Label sits below the bar (bar is near the top edge)
     ax.text(
-        x0 + bar_px / 2, y0 - tick * 1.6, label,
-        ha="center", va="bottom", fontsize=8, color="#1e293b", zorder=6,
+        x0 + bar_px / 2, y0 + tick * 2.4, label,
+        ha="center", va="top", fontsize=10, fontweight="bold", color=dark, zorder=6,
+        path_effects=[pe.Stroke(linewidth=3, foreground="white"), pe.Normal()],
     )
 
 
@@ -225,6 +245,12 @@ def _render_forest_change_4class(
 
     fig, ax = plt.subplots(figsize=(8, 8), facecolor="white")
     ax.imshow(rgb)
+    # Municipality boundary outline (traced from the in-boundary valid mask),
+    # kept consistent with the change map.
+    ax.contour(
+        valid.astype(float), levels=[0.5],
+        colors="#111827", linewidths=1.2, antialiased=True,
+    )
     ax.set_title(
         f"{municipality_name} — Forest Change Map {y0}→{y1}\n"
         f"NGLIP job {job_id[:8]}",
@@ -236,25 +262,31 @@ def _render_forest_change_4class(
 
     patches = [
         mpatches.Patch(
-            color=tuple(v / 255 for v in _FC_STABLE_NONFOREST),
-            label=f"Stable Non-Forest ({pct['stable_nf']:.1f}%)",
-        ),
-        mpatches.Patch(
             color=tuple(v / 255 for v in _FC_STABLE_FOREST),
-            label=f"Stable Forest ({pct['stable_f']:.1f}%)",
+            label=f"Forest → Forest — no change ({pct['stable_f']:.1f}%)",
         ),
         mpatches.Patch(
             color=tuple(v / 255 for v in _FC_FOREST_LOSS),
-            label=f"Forest Area Loss ({pct['loss']:.1f}%)",
+            label=f"Forest → Non-forest — loss ({pct['loss']:.1f}%)",
         ),
         mpatches.Patch(
             color=tuple(v / 255 for v in _FC_FOREST_GAIN),
-            label=f"Forest Area Gain ({pct['gain']:.1f}%)",
+            label=f"Non-forest → Forest — gain ({pct['gain']:.1f}%)",
+        ),
+        mpatches.Patch(
+            color=tuple(v / 255 for v in _FC_STABLE_NONFOREST),
+            label=f"Non-forest → Non-forest — no change ({pct['stable_nf']:.1f}%)",
         ),
     ]
-    ax.legend(handles=patches, loc="lower right", fontsize=9,
-              framealpha=0.95, edgecolor="#d1d5db", title="Forest Change",
-              title_fontsize=8.5)
+    # Reserve a band at the bottom for the legend so it sits in the lower-right
+    # of the image and never covers any part of the map. Footer goes below it.
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.92, bottom=0.17)
+    fig.legend(
+        handles=patches, loc="lower right", bbox_to_anchor=(0.985, 0.025),
+        fontsize=9.5, framealpha=1.0, facecolor="white", edgecolor="#334155",
+        title="Forest Change", title_fontsize=10.5,
+        borderpad=0.8, labelspacing=0.6, handlelength=1.8, handleheight=1.4,
+    )
 
     _add_footer(fig, footer)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -278,29 +310,38 @@ def _render_change_map(
     # only in-boundary pixels are coloured.
     rgb = np.full((h, w, 3), (255, 255, 255), dtype=np.uint8)
 
-    valid   = (band0 != 0) & (band1 != 0)          # inside the municipality boundary
-    changed = valid & (band0 != band1)
+    valid = (band0 != 0) & (band1 != 0)            # inside the municipality boundary
 
-    # Forest/Grassland loss → red; gain of Cultivated/Settlement → green
-    loss_codes = {4, 5, 9}   # Forest, Grassland, Open Woodland
-    gain_codes = {7, 8}       # Cultivated, Settlement
+    # Forest change based on the forest binary definition (_FOREST_CODES = {4, 9}):
+    #   Forest loss  = forest → non-forest  (red)
+    #   Forest gain  = non-forest → forest  (green)
+    #   everything else inside the boundary = stable / unchanged (grey)
+    is_forest0 = np.isin(band0, list(_FOREST_CODES))
+    is_forest1 = np.isin(band1, list(_FOREST_CODES))
 
-    loss_mask = changed & np.isin(band0, list(loss_codes)) & ~np.isin(band1, list(loss_codes))
-    gain_mask = changed & np.isin(band1, list(gain_codes)) & ~np.isin(band0, list(gain_codes))
+    loss_mask = valid &  is_forest0 & ~is_forest1   # forest → non-forest
+    gain_mask = valid & ~is_forest0 &  is_forest1   # non-forest → forest
 
-    rgb[valid & ~changed] = _CHANGE_UNCHANGED   # unchanged land inside boundary
-    rgb[changed]          = _CHANGE_UNCHANGED   # other changes = grey base
-    rgb[loss_mask]        = _CHANGE_LOSS
-    rgb[gain_mask]        = _CHANGE_GAIN
+    rgb[valid]     = _CHANGE_UNCHANGED   # stable base (forest-stable or non-forest-stable)
+    rgb[loss_mask] = _CHANGE_LOSS
+    rgb[gain_mask] = _CHANGE_GAIN
 
     total_px = int(valid.sum()) or 1
     pct_loss = 100.0 * int(loss_mask.sum()) / total_px
     pct_gain = 100.0 * int(gain_mask.sum()) / total_px
+    pct_net  = pct_gain - pct_loss
 
     fig, ax = plt.subplots(figsize=(8, 8), facecolor="white")
     ax.imshow(rgb)
+    # Draw the municipality boundary so the silhouette is clear even when most
+    # of the interior is a uniform "unchanged" grey. The valid mask (in-boundary
+    # pixels) traced at 0.5 is exactly the municipality outline in pixel space.
+    ax.contour(
+        valid.astype(float), levels=[0.5],
+        colors="#111827", linewidths=1.2, antialiased=True,
+    )
     ax.set_title(
-        f"{municipality_name} — Change Map {y0}→{y1}\n"
+        f"{municipality_name} — Forest Change {y0}→{y1}  (net {pct_net:+.1f}%)\n"
         f"NGLIP job {job_id[:8]}",
         fontsize=10, fontweight="bold",
     )
@@ -309,12 +350,19 @@ def _render_change_map(
     _add_scale_bar(ax, w, h, px_size_m)
 
     patches = [
-        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_GAIN),      label=f"Vegetation / agricultural gain ({pct_gain:.1f}%)"),
-        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_LOSS),      label=f"Vegetation / forest loss ({pct_loss:.1f}%)"),
-        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_UNCHANGED), label="Unchanged"),
+        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_GAIN),      label=f"Forest gain — non-forest → forest ({pct_gain:.1f}%)"),
+        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_LOSS),      label=f"Forest loss — forest → non-forest ({pct_loss:.1f}%)"),
+        mpatches.Patch(color=tuple(v/255 for v in _CHANGE_UNCHANGED), label="Stable / unchanged"),
     ]
-    ax.legend(handles=patches, loc="upper right", fontsize=8, framealpha=0.95,
-              edgecolor="#d1d5db", title="Change class", title_fontsize=8.5)
+    # Reserve a band at the bottom for the legend so it sits in the lower-right
+    # of the image and never covers any part of the map. Footer goes below it.
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.92, bottom=0.17)
+    fig.legend(
+        handles=patches, loc="lower right", bbox_to_anchor=(0.985, 0.025),
+        fontsize=9.5, framealpha=1.0, facecolor="white", edgecolor="#334155",
+        title="Change class", title_fontsize=10.5,
+        borderpad=0.8, labelspacing=0.6, handlelength=1.8, handleheight=1.4,
+    )
 
     _add_footer(fig, footer)
     out_path.parent.mkdir(parents=True, exist_ok=True)

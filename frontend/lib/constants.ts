@@ -48,3 +48,8 @@ export const DEFAULT_BOUNDARY_VERSION = "mof-2021";
 // 5-year ICIMOD Nepal land-cover series
 export const ANALYSIS_YEARS: number[] = [2000, 2005, 2010, 2015, 2020];
 
+// Forest-area binary classification — true tree cover only:
+// Forest (4) + Open Woodland (9). Grassland, Shrubland, and Cultivated Land are non-forest.
+export const FOREST_CODES = new Set([4, 9]);
+export const FOREST_COLOUR     = "#2d6a4f";  // deep green
+export const NON_FOREST_COLOUR = "#9e9e9e";  // neutral grey

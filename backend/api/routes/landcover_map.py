@@ -54,8 +54,8 @@ _UNKNOWN_RGBA = (128, 0, 128, 220)
 _CHANGE_UNCHANGED = (0, 0, 0, 0)
 
 # Forest/non-forest binary classification
-# Forest Area = Forest + Grassland + Shrubland + Cultivated Land + Open Woodland
-_FOREST_CODES: frozenset[int] = frozenset({4, 5, 6, 9})  # Forest, Grassland, Shrubland, Open Woodland
+# Forest Area = true tree cover only: Forest + Open Woodland
+_FOREST_CODES: frozenset[int] = frozenset({4, 9})  # Forest, Open Woodland
 _FOREST_RGBA     = ( 45, 106,  79, 255)  # deep green
 _NON_FOREST_RGBA = (158, 158, 158, 255)  # neutral grey
 
@@ -226,7 +226,11 @@ def _render_change_png(
 def _png_response(png_bytes: bytes, bounds: list[float], *, is_head: bool) -> Response:
     west, south, east, north = bounds
     headers = {
-        "Cache-Control": "public, max-age=3600",
+        # no-store: these PNGs are rendered on the fly and their pixels change
+        # whenever the palette / forest definition changes, while the URL stays
+        # stable per municipality+year. Caching them makes the browser serve
+        # stale tiles after a rendering change, so we disable it entirely.
+        "Cache-Control": "no-store, no-cache, must-revalidate",
         "X-Bbox-West": str(west),
         "X-Bbox-South": str(south),
         "X-Bbox-East": str(east),
@@ -245,7 +249,7 @@ def _head_response(cog_path: Path) -> Response:
     return Response(
         content=b"",
         media_type="image/png",
-        headers={"Cache-Control": "public, max-age=3600",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate",
                  "X-Bbox-West": "0", "X-Bbox-South": "0",
                  "X-Bbox-East": "0", "X-Bbox-North": "0"},
     )

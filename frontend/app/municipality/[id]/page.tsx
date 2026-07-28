@@ -10,6 +10,7 @@ import { ComparisonBarChart } from "@/components/ComparisonBarChart";
 import { DeltaLineChart } from "@/components/DeltaLineChart";
 import { DetailedTables } from "@/components/DetailedTables";
 import { EvidencePanel } from "@/components/EvidencePanel";
+import { ForestTransitionMatrix } from "@/components/ForestTransitionMatrix";
 import { LandCoverMap } from "@/components/LandCoverMap";
 import { NetChangeTable } from "@/components/NetChangeTable";
 import { ReportDownload } from "@/components/ReportDownload";
@@ -352,6 +353,12 @@ export default function MunicipalityPage() {
               {availableStats.length >= 2 && (
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <TrendChart statistics={availableStats} />
+                </div>
+              )}
+
+              {changeMatrix && changeMatrix.transitions.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                  <ForestTransitionMatrix change={changeMatrix} />
                 </div>
               )}
 
