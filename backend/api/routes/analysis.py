@@ -283,28 +283,73 @@ async def _resolve_job_for_report(job_id: str, db: AsyncSession) -> tuple[str, d
     return row["municipality_name"] or job_id[:8], row["result"] or {}
 
 
+# Figures embedded in the PDF. If any is newer than report.pdf, the PDF is
+# stale (e.g. maps were re-rendered after a forest-definition change) and must
+# be regenerated so it doesn't keep showing the old classification.
+_PDF_SOURCE_FIGURES = (
+    "comparison_map.png", "change_map.png", "forest_change_4class.png",
+    "trend_chart.png", "sankey.png",
+)
+
+
+def _pdf_is_stale(pdf_path: Path, reports_dir: Path) -> bool:
+    if not pdf_path.exists():
+        return True
+    pdf_mtime = pdf_path.stat().st_mtime
+    for fname in _PDF_SOURCE_FIGURES:
+        fp = reports_dir / fname
+        if fp.exists() and fp.stat().st_mtime > pdf_mtime:
+            return True
+    return False
+
+
+def _ensure_report_pdf(job_id: str, municipality_name: str, job_result: dict, pdf_path: Path) -> None:
+    """(Re)generate the PDF if it is missing or older than the maps it embeds.
+
+    First ensures the map/chart figures exist (regenerating them via the
+    cartography renderer if missing), so the rebuilt PDF embeds current maps.
+    """
+    from backend.agents.report.agent import generate_pdf  # noqa: PLC0415
+
+    reports_dir = pdf_path.parent
+    dataset_version = (
+        (job_result.get("statistics") or [{}])[0].get("dataset_version") or "landcover-v3.1"
+    )
+    # Ensure the embedded figures are present (regenerates all maps + charts).
+    if not (reports_dir / "forest_change_4class.png").exists():
+        try:
+            _ensure_figure_file(job_id, "forest_change_4class.png", dataset_version, job_result)
+        except Exception as exc:
+            logger.warning("Figure regen for PDF failed (%s): %s", job_id, exc)
+
+    if _pdf_is_stale(pdf_path, reports_dir):
+        generate_pdf(job_id, municipality_name, job_result, pdf_path)
+
+
 @router.get("/jobs/{job_id}/report.pdf")
 async def download_report_pdf(job_id: str, db: AsyncSession = Depends(get_session)) -> FileResponse:
     """Download PDF report for a completed job.
 
-    If the file was not generated during the original pipeline run (e.g. the
-    job is a cache hit from before the report agent was introduced), it is
-    generated on-demand the first time this endpoint is called.
+    Generated on-demand if missing, and regenerated if it is older than the
+    map/chart figures it embeds (so a re-render — e.g. after a forest-definition
+    change — is reflected instead of serving a stale report).
     """
     municipality_name, job_result = await _resolve_job_for_report(job_id, db)
 
     pdf_path = Path(settings.object_store_path) / "reports" / job_id / "report.pdf"
+    try:
+        await run_in_threadpool(_ensure_report_pdf, job_id, municipality_name, job_result, pdf_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}") from exc
+
     if not pdf_path.exists():
-        from backend.agents.report.agent import generate_pdf  # noqa: PLC0415
-        try:
-            generate_pdf(job_id, municipality_name, job_result, pdf_path)
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail="PDF could not be generated")
 
     return FileResponse(
         str(pdf_path),
         media_type="application/pdf",
         filename=f"nglip_{municipality_name.replace(' ', '_')}_{job_id[:8]}.pdf",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
     )
 
 
@@ -422,20 +467,20 @@ async def serve_map_file(
 @router.get("/jobs/{job_id}/download.zip")
 async def download_zip(job_id: str, db: AsyncSession = Depends(get_session)) -> StreamingResponse:
     """Download all job outputs (PDF, XLSX, CSV, maps) as a single ZIP archive."""
-    from backend.agents.report.agent import generate_pdf, generate_xlsx  # noqa: PLC0415
+    from backend.agents.report.agent import generate_xlsx  # noqa: PLC0415
 
     municipality_name, job_result = await _resolve_job_for_report(job_id, db)
 
     reports_dir = Path(settings.object_store_path) / "reports" / job_id
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    # Ensure PDF exists — generate on-demand if the pipeline stage was skipped or failed
+    # Ensure PDF exists and is current (regenerate if missing or older than its
+    # embedded figures) so the zip never bundles a stale report.
     pdf_path = reports_dir / "report.pdf"
-    if not pdf_path.exists():
-        try:
-            generate_pdf(job_id, municipality_name, job_result, pdf_path)
-        except Exception as exc:
-            logger.warning("PDF generation failed for zip (job %s): %s", job_id, exc)
+    try:
+        _ensure_report_pdf(job_id, municipality_name, job_result, pdf_path)
+    except Exception as exc:
+        logger.warning("PDF generation failed for zip (job %s): %s", job_id, exc)
 
     # Ensure XLSX exists — generate on-demand if the pipeline stage was skipped or failed
     xlsx_path = reports_dir / "report.xlsx"

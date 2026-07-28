@@ -128,12 +128,12 @@ def _maps_html(out_dir: Path, from_year: int, to_year: int, municipality_name: s
   <h3>Figure {fig_n} — Change Detection Map: {from_year}&rarr;{to_year}</h3>
   <img src="data:image/png;base64,{b64}" alt="Land cover change map"/>
   <p class="map-caption">
-    Spatial distribution of detected land cover change between {from_year} and {to_year}
+    Spatial distribution of detected forest change between {from_year} and {to_year}
     for {municipality_name}.
-    <b style="color:#2e8b57">Green</b> = vegetation or agricultural gain;
-    <b style="color:#cc3311">Red</b> = forest or vegetation loss;
-    <b style="color:#aaa">Grey</b> = no change detected.
-    Only pixels with classified data in both years are evaluated.
+    <b style="color:#2e8b57">Green</b> = forest gain (non-forest &rarr; forest);
+    <b style="color:#cc3311">Red</b> = forest loss (forest &rarr; non-forest);
+    <b style="color:#aaa">Grey</b> = stable / no change.
+    Forest = codes 4 (Forest) and 9 (Open Woodland); only pixels classified in both years are evaluated.
     Source: ICIMOD Nepal Land Cover · pixel resolution 30 m.
   </p>
 </div>"""
@@ -369,6 +369,83 @@ def _generate_trend_chart_png(stats_list: list[dict]) -> bytes | None:
         return buf.read()
     except Exception as exc:
         logger.warning("Could not generate trend chart: %s", exc)
+        return None
+
+
+def _generate_forest_comparison_png(stats_list: list[dict]) -> bytes | None:
+    """Grouped horizontal bar chart: Forest vs Non-Forest area, base year vs latest year.
+
+    Mirrors the website's 'Forest cover: base vs latest' chart — each category has a
+    lighter bar (base year) and a darker bar (latest year).
+    """
+    try:
+        import numpy as np  # noqa: PLC0415
+        import matplotlib.patches as mpatches  # noqa: PLC0415
+
+        plt = _mpl_setup()
+        if len(stats_list) < 2:
+            return None
+
+        sorted_stats = sorted(stats_list, key=lambda s: s["year"])
+        base, latest = sorted_stats[0], sorted_stats[-1]
+
+        def _split(stat: dict) -> tuple[float, float]:
+            f = sum(c["area_km2"] for c in stat["classes"] if c["code"] in _FOREST_CODES_RPT)
+            nf = sum(c["area_km2"] for c in stat["classes"]
+                     if c["code"] != 0 and c["code"] not in _FOREST_CODES_RPT)
+            return f, nf
+
+        f0, nf0 = _split(base)
+        f1, nf1 = _split(latest)
+
+        cats        = ["Forest Area", "Non-Forest Area"]
+        base_vals   = [f0, nf0]
+        latest_vals = [f1, nf1]
+        cat_colours = ["#2d6a4f", "#9e9e9e"]  # forest green, non-forest grey
+
+        y = np.arange(len(cats))
+        h = 0.36
+
+        fig, ax = plt.subplots(figsize=(10, 3.4))
+        fig.patch.set_facecolor("#f8fafc")
+        ax.set_facecolor("#f8fafc")
+
+        for i, c in enumerate(cat_colours):
+            ax.barh(y[i] + h / 2, base_vals[i], height=h, color=c, alpha=0.4,
+                    edgecolor=c, linewidth=1, zorder=3)          # base year — lighter
+            ax.barh(y[i] - h / 2, latest_vals[i], height=h, color=c, zorder=3)  # latest — darker
+            ax.text(base_vals[i], y[i] + h / 2, f"  {base_vals[i]:,.0f}",
+                    va="center", ha="left", fontsize=8, color="#374151")
+            ax.text(latest_vals[i], y[i] - h / 2, f"  {latest_vals[i]:,.0f}",
+                    va="center", ha="left", fontsize=8, color="#374151")
+
+        ax.set_yticks(y)
+        ax.set_yticklabels(cats, fontsize=10, color="#374151")
+        ax.set_xlabel("Area (km²)", fontsize=10, color="#374151")
+        ax.set_title(f"Forest Cover: {base['year']} vs {latest['year']}",
+                     fontsize=12, fontweight="bold", color="#1a4a7a", pad=10)
+        ax.grid(True, axis="x", alpha=0.3, color="#e5e7eb")
+        ax.tick_params(colors="#6b7280", labelsize=9)
+        ax.margins(x=0.12)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#e5e7eb")
+
+        handles = [
+            mpatches.Patch(facecolor="#9db8ac", label=f"{base['year']} (lighter)"),
+            mpatches.Patch(facecolor="#2d6a4f", label=f"{latest['year']} (darker)"),
+        ]
+        ax.legend(handles=handles, loc="lower right", fontsize=8,
+                  framealpha=0.9, edgecolor="#e5e7eb")
+
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as exc:
+        logger.warning("Could not generate forest comparison chart: %s", exc)
         return None
 
 
@@ -660,6 +737,22 @@ def _charts_html(stats_list: list[dict], matrices: list[dict], fig_offset: int =
 
     sections: list[str] = []
     n = fig_offset
+
+    comparison_png = _generate_forest_comparison_png(stats_list)
+    if comparison_png:
+        n += 1
+        b64 = base64.b64encode(comparison_png).decode()
+        sections.append(
+            f"""<div class="chart-block">
+  <h3>Figure {n} — Forest Cover Comparison (Base vs Latest Year)</h3>
+  <img src="data:image/png;base64,{b64}" alt="Forest cover comparison bar chart"/>
+  <p class="chart-caption">
+    Forest and Non-Forest area (km²) compared between the first and last analysis years.
+    The lighter bar is the base year, the darker bar the latest year.
+    Forest = Forest (4) and Open Woodland (9).
+  </p>
+</div>"""
+        )
 
     trend_png = _generate_trend_chart_png(stats_list)
     if trend_png:
