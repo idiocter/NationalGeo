@@ -63,8 +63,11 @@ export const api = {
     reportPdfUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.pdf`,
     reportXlsxUrl:     (jobId: string) => `${BASE_URL}/jobs/${jobId}/report.xlsx`,
     downloadZipUrl:    (jobId: string) => `${BASE_URL}/jobs/${jobId}/download.zip`,
-    comparisonMapUrl:  (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/comparison_map.png`,
-    changeMapUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/change_map.png`,
+    comparisonMapUrl:      (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/comparison_map.png`,
+    changeMapUrl:          (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/change_map.png`,
+    forestChangeMapUrl:    (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/forest_change_4class.png`,
+    trendChartUrl:         (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/trend_chart.png`,
+    sankeyUrl:             (jobId: string) => `${BASE_URL}/jobs/${jobId}/maps/sankey.png`,
   },
 
   dashboard: {

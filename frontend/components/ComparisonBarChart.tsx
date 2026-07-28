@@ -89,26 +89,26 @@ export function ComparisonBarChart({ statistics }: Props) {
         </p>
       </div>
 
-      <ResponsiveContainer width="100%" height={120}>
+      <ResponsiveContainer width="100%" height={data.length * 72 + 64}>
         <BarChart
           data={data}
           layout="vertical"
-          margin={{ top: 4, right: 48, left: 4, bottom: 4 }}
-          barCategoryGap="30%"
-          barGap={2}
+          margin={{ top: 4, right: 56, left: 4, bottom: 4 }}
+          barCategoryGap="24%"
+          barGap={3}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
           <YAxis
             dataKey="name"
             type="category"
-            tick={{ fontSize: 10, fill: "#6b7280" }}
+            tick={{ fontSize: 12, fill: "#4b5563" }}
             axisLine={false}
             tickLine={false}
-            width={110}
+            width={134}
           />
           <XAxis
             type="number"
-            tick={{ fontSize: 10, fill: "#9ca3af" }}
+            tick={{ fontSize: 12, fill: "#6b7280" }}
             axisLine={false}
             tickLine={false}
             tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
@@ -117,8 +117,9 @@ export function ComparisonBarChart({ statistics }: Props) {
           <Tooltip content={<CustomTooltip />} />
           <Legend
             iconType="square"
-            iconSize={8}
-            wrapperStyle={{ fontSize: 11, color: "#6b7280", paddingTop: 8 }}
+            iconSize={10}
+            wrapperStyle={{ fontSize: 12, color: "#6b7280", paddingTop: 10 }}
+            formatter={(value) => <span style={{ color: "#6b7280" }}>{value}</span>}
           />
           <Bar dataKey={baseKey} name={String(baseYear.year)} radius={[0, 3, 3, 0]}>
             {data.map((entry, i) => (

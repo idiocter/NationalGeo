@@ -12,6 +12,7 @@ import { EvidencePanel } from "@/components/EvidencePanel";
 import { LandCoverMap } from "@/components/LandCoverMap";
 import { NetChangeTable } from "@/components/NetChangeTable";
 import { ReportDownload } from "@/components/ReportDownload";
+import { ReportFigures } from "@/components/ReportFigures";
 import { StatisticsPanel } from "@/components/StatisticsPanel";
 import { TrendChart } from "@/components/TrendChart";
 import { api } from "@/lib/api";
@@ -331,15 +332,17 @@ export default function MunicipalityPage() {
                 );
               })()}
 
-              {/* Row 1: Comparison bar + delta line */}
+              {/* Comparison bar — full width so horizontal bars are readable */}
               {availableStats.length >= 2 && (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                    <ComparisonBarChart statistics={availableStats} />
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                    <DeltaLineChart statistics={availableStats} />
-                  </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                  <ComparisonBarChart statistics={availableStats} />
+                </div>
+              )}
+
+              {/* Delta line */}
+              {availableStats.length >= 2 && (
+                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                  <DeltaLineChart statistics={availableStats} />
                 </div>
               )}
 
@@ -354,6 +357,11 @@ export default function MunicipalityPage() {
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                   <AlluvialChart change={changeMatrix} customGroups={customGroups} />
                 </div>
+              )}
+
+              {/* Static report figures (same images as the PDF) */}
+              {result && jobId && isDone && (
+                <ReportFigures jobId={jobId} result={result} />
               )}
 
               {!result && !submitError && (

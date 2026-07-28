@@ -127,6 +127,9 @@ export interface JobResult {
     map_bundle?: { url: string };
     comparison_map?: { url: string };
     change_map?: { url: string };
+    forest_change_4class?: { url: string };
+    trend_chart?: { url: string };
+    sankey?: { url: string };
   };
   validation?: {
     verdict: "pass" | "warn" | "block";
