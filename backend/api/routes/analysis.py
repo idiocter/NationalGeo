@@ -3,6 +3,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import zipfile
 from pathlib import Path
 from uuid import uuid4
@@ -16,8 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies import get_session
 from backend.config import get_settings
-from backend.contracts.models import JobEnvelope
+from backend.contracts.models import CLASS_NAMES, JobEnvelope
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analysis"])
 settings = get_settings()
 
@@ -355,13 +357,32 @@ async def serve_map_file(
 @router.get("/jobs/{job_id}/download.zip")
 async def download_zip(job_id: str, db: AsyncSession = Depends(get_session)) -> StreamingResponse:
     """Download all job outputs (PDF, XLSX, CSV, maps) as a single ZIP archive."""
+    from backend.agents.report.agent import generate_pdf, generate_xlsx  # noqa: PLC0415
+
     municipality_name, job_result = await _resolve_job_for_report(job_id, db)
+
+    reports_dir = Path(settings.object_store_path) / "reports" / job_id
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    # Ensure PDF exists — generate on-demand if the pipeline stage was skipped or failed
+    pdf_path = reports_dir / "report.pdf"
+    if not pdf_path.exists():
+        try:
+            generate_pdf(job_id, municipality_name, job_result, pdf_path)
+        except Exception as exc:
+            logger.warning("PDF generation failed for zip (job %s): %s", job_id, exc)
+
+    # Ensure XLSX exists — generate on-demand if the pipeline stage was skipped or failed
+    xlsx_path = reports_dir / "report.xlsx"
+    if not xlsx_path.exists():
+        try:
+            generate_xlsx(job_id, municipality_name, job_result, xlsx_path)
+        except Exception as exc:
+            logger.warning("XLSX generation failed for zip (job %s): %s", job_id, exc)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        reports_dir = Path(settings.object_store_path) / "reports" / job_id
-
-        # Add pre-generated files if they exist
+        # Add all available output files
         for fname in ["report.pdf", "report.xlsx", "comparison_map.png", "change_map.png"]:
             fpath = reports_dir / fname
             if fpath.exists():
@@ -378,7 +399,6 @@ async def download_zip(job_id: str, db: AsyncSession = Depends(get_session)) -> 
         writer.writerow(["Year", "Class Code", "Class Name", "Area km2", "Share %", "Pixels"])
         for stat in sorted(statistics, key=lambda s: s["year"]):
             for cls in sorted(stat["classes"], key=lambda c: c["code"]):
-                from backend.contracts.models import CLASS_NAMES  # noqa: PLC0415
                 writer.writerow([
                     stat["year"], cls["code"],
                     CLASS_NAMES.get(cls["code"], cls["name"]),
