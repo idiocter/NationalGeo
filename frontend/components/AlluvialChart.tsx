@@ -1,8 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
-import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
-
+import { useMemo, useState } from "react";
 import { FOREST_CODES, FOREST_COLOUR, NON_FOREST_COLOUR } from "@/lib/constants";
 import type { ChangeMatrix, CustomClassGroup } from "@/types/api";
 
@@ -11,122 +9,111 @@ interface Props {
   customGroups?: CustomClassGroup[] | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomNode({ x, y, width, height, payload }: any) {
-  if (height <= 0) return null;
-  const { color, label, side } = payload;
-  const isSource = side === "source";
-  return (
-    <g>
-      <rect x={x} y={y} width={width} height={Math.max(height, 2)} fill={color} rx={3} />
-      <text
-        x={isSource ? x + width + 6 : x - 6}
-        y={y + height / 2}
-        textAnchor={isSource ? "start" : "end"}
-        dominantBaseline="middle"
-        fontSize={10}
-        fill="#374151"
-      >
-        {label}
-      </text>
-    </g>
-  );
-}
+// SVG layout constants
+const NODE_W    = 14;
+const SVG_W     = 520;
+const MARGIN_X  = 120;
+const FLOW_W    = SVG_W - 2 * MARGIN_X - 2 * NODE_W;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomLink({ sourceX, targetX, sourceY, sourceControlX, targetControlX, targetY, linkWidth, payload }: any) {
-  if (linkWidth <= 0) return null;
-  const d = `
-    M${sourceX},${sourceY + linkWidth / 2}
-    C${sourceControlX},${sourceY + linkWidth / 2}
-     ${targetControlX},${targetY + linkWidth / 2}
-     ${targetX},${targetY + linkWidth / 2}
-    L${targetX},${targetY - linkWidth / 2}
-    C${targetControlX},${targetY - linkWidth / 2}
-     ${sourceControlX},${sourceY - linkWidth / 2}
-     ${sourceX},${sourceY - linkWidth / 2}
-    Z
-  `;
-  return (
-    <path
-      d={d}
-      fill={payload?.sourceColor ?? "#94a3b8"}
-      fillOpacity={0.45}
-      stroke={payload?.sourceColor ?? "#94a3b8"}
-      strokeOpacity={0.3}
-      strokeWidth={0.5}
-    />
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0]?.payload;
-  if (!d) return null;
-  if (d.sourceLabel) {
-    return (
-      <div className="bg-white border border-gray-200 rounded-xl shadow-md p-3 text-xs min-w-[180px]">
-        <p className="font-semibold text-gray-800 mb-1">{d.sourceLabel} → {d.targetLabel}</p>
-        <p className="text-gray-600">{d.area_km2?.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²</p>
-      </div>
-    );
-  }
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-md p-3 text-xs">
-      <p className="font-semibold text-gray-800">{d.label}</p>
-      {d.total_km2 != null && (
-        <p className="text-gray-600">{d.total_km2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km² total</p>
-      )}
-    </div>
-  );
-}
+interface HoverInfo { label: string; area: number }
 
 export function AlluvialChart({ change }: Props) {
-  const { nodes, links, forestLoss, forestGain } = useMemo(() => {
-    // Aggregate transitions into binary forest/non-forest flows
-    let forestToForest    = 0;
-    let forestToNon       = 0; // forest loss
-    let nonToForest       = 0; // forest gain
-    let nonToNon          = 0;
+  const [hover, setHover] = useState<HoverInfo | null>(null);
+
+  const { forestLoss, forestGain, forestStable, nonStable } = useMemo(() => {
+    let forestStable = 0;
+    let forestLoss   = 0; // forest → non-forest
+    let forestGain   = 0; // non-forest → forest
+    let nonStable    = 0;
 
     for (const t of change.transitions) {
       if (t.from_code === t.to_code) continue;
-      const fromForest = FOREST_CODES.has(t.from_code);
-      const toForest   = FOREST_CODES.has(t.to_code);
-      if (fromForest && toForest)   forestToForest += t.area_km2;
-      else if (fromForest)          forestToNon    += t.area_km2;
-      else if (toForest)            nonToForest    += t.area_km2;
-      else                          nonToNon       += t.area_km2;
+      const fromF = FOREST_CODES.has(t.from_code);
+      const toF   = FOREST_CODES.has(t.to_code);
+      if  (fromF &&  toF) forestStable += t.area_km2;
+      else if (fromF)     forestLoss   += t.area_km2;
+      else if (toF)       forestGain   += t.area_km2;
+      else                nonStable    += t.area_km2;
     }
-
-    // Nodes: [0] Forest from, [1] Non-Forest from, [2] Forest to, [3] Non-Forest to
-    const allNodes = [
-      { name: `Forest (${change.from_year})`,     label: "Forest Area",     color: FOREST_COLOUR,     side: "source" },
-      { name: `Non-Forest (${change.from_year})`, label: "Non-Forest Area", color: NON_FOREST_COLOUR, side: "source" },
-      { name: `Forest (${change.to_year})`,       label: "Forest Area",     color: FOREST_COLOUR,     side: "target" },
-      { name: `Non-Forest (${change.to_year})`,   label: "Non-Forest Area", color: NON_FOREST_COLOUR, side: "target" },
-    ];
-
-    const sankeyLinks = [];
-    if (forestToForest > 0.01) sankeyLinks.push({ source: 0, target: 2, value: forestToForest, area_km2: forestToForest, sourceLabel: "Forest Area",     targetLabel: "Forest Area",     sourceColor: FOREST_COLOUR });
-    if (forestToNon    > 0.01) sankeyLinks.push({ source: 0, target: 3, value: forestToNon,    area_km2: forestToNon,    sourceLabel: "Forest Area",     targetLabel: "Non-Forest Area", sourceColor: FOREST_COLOUR });
-    if (nonToForest    > 0.01) sankeyLinks.push({ source: 1, target: 2, value: nonToForest,    area_km2: nonToForest,    sourceLabel: "Non-Forest Area", targetLabel: "Forest Area",     sourceColor: NON_FOREST_COLOUR });
-    if (nonToNon       > 0.01) sankeyLinks.push({ source: 1, target: 3, value: nonToNon,       area_km2: nonToNon,       sourceLabel: "Non-Forest Area", targetLabel: "Non-Forest Area", sourceColor: NON_FOREST_COLOUR });
-
-    return { nodes: allNodes, links: sankeyLinks, forestLoss: forestToNon, forestGain: nonToForest };
+    return { forestLoss, forestGain, forestStable, nonStable };
   }, [change]);
 
-  if (links.length === 0) {
+  const hasChange = forestLoss > 0.01 || forestGain > 0.01;
+
+  if (!hasChange) {
     return (
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-800">
           Forest Transitions ({change.from_year} → {change.to_year})
         </h3>
-        <p className="text-xs text-gray-400">No significant transitions detected.</p>
+        <p className="text-xs text-gray-400">No significant forest boundary changes detected.</p>
       </div>
     );
   }
+
+  // ── SVG layout: 2 source nodes, 2 target nodes ────────────────────────────
+  //
+  // We show only the CROSS-BOUNDARY flows in the diagram:
+  //   Forest (from) → Non-Forest (to)   [forest loss, red-tinted green]
+  //   Non-Forest (from) → Forest (to)   [forest gain, green]
+  //
+  // Within-category changes (forest→forest subtype, non→non subtype) are
+  // shown as reference text, not as Sankey flows, so they don't dwarf the
+  // cross-boundary transitions that actually matter.
+  //
+  // Node sizes are proportional to the cross-boundary flow they carry.
+
+  const SVG_H  = 220;
+  const availH = SVG_H - 24;
+
+  // Two source nodes: Forest (carries forestLoss), Non-Forest (carries forestGain)
+  // Two target nodes: Forest (carries forestGain), Non-Forest (carries forestLoss)
+  const totalFlow  = forestLoss + forestGain || 1;
+  const fLossH     = Math.max((forestLoss / totalFlow) * availH, 6);
+  const fGainH     = Math.max((forestGain / totalFlow) * availH, 6);
+
+  const NODE_PAD = 16;
+
+  // Source: Forest node (top) + Non-Forest node (bottom)
+  const srcForestH    = fLossH;
+  const srcNonH       = fGainH;
+  const srcTotalH     = srcForestH + srcNonH + NODE_PAD;
+  const srcStartY     = 12 + (availH - srcTotalH) / 2;
+  const srcForestY    = srcStartY;
+  const srcNonY       = srcStartY + srcForestH + NODE_PAD;
+
+  // Target: Forest node (top) + Non-Forest node (bottom)
+  const tgtForestH    = fGainH;
+  const tgtNonH       = fLossH;
+  const tgtTotalH     = tgtForestH + tgtNonH + NODE_PAD;
+  const tgtStartY     = 12 + (availH - tgtTotalH) / 2;
+  const tgtForestY    = tgtStartY;
+  const tgtNonY       = tgtStartY + tgtForestH + NODE_PAD;
+
+  const srcX = MARGIN_X;
+  const tgtX = SVG_W - MARGIN_X - NODE_W;
+  const cpX  = FLOW_W / 2.5;
+
+  // Loss link: src Forest → tgt Non-Forest
+  const lossPath = [
+    `M ${srcX + NODE_W} ${srcForestY}`,
+    `C ${srcX + NODE_W + cpX} ${srcForestY}, ${tgtX - cpX} ${tgtNonY}, ${tgtX} ${tgtNonY}`,
+    `L ${tgtX} ${tgtNonY + fLossH}`,
+    `C ${tgtX - cpX} ${tgtNonY + fLossH}, ${srcX + NODE_W + cpX} ${srcForestY + fLossH}, ${srcX + NODE_W} ${srcForestY + fLossH}`,
+    "Z",
+  ].join(" ");
+
+  // Gain link: src Non-Forest → tgt Forest
+  const gainPath = [
+    `M ${srcX + NODE_W} ${srcNonY}`,
+    `C ${srcX + NODE_W + cpX} ${srcNonY}, ${tgtX - cpX} ${tgtForestY}, ${tgtX} ${tgtForestY}`,
+    `L ${tgtX} ${tgtForestY + fGainH}`,
+    `C ${tgtX - cpX} ${tgtForestY + fGainH}, ${srcX + NODE_W + cpX} ${srcNonY + fGainH}, ${srcX + NODE_W} ${srcNonY + fGainH}`,
+    "Z",
+  ].join(" ");
+
+  const fmt = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const netDelta = forestGain - forestLoss;
 
   return (
     <div className="space-y-3">
@@ -135,42 +122,128 @@ export function AlluvialChart({ change }: Props) {
           Forest Transitions — {change.from_year} → {change.to_year}
         </h3>
         <p className="text-xs text-gray-400 mt-0.5">
-          <span className="text-red-500">Forest loss: {forestLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</span>
+          <span className="text-red-500 font-medium">Loss: {fmt(forestLoss)} km²</span>
           {" · "}
-          <span className="text-emerald-600">Forest gain: {forestGain.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²</span>
+          <span className="text-emerald-600 font-medium">Gain: {fmt(forestGain)} km²</span>
+          {" · "}
+          <span className={netDelta >= 0 ? "text-emerald-600" : "text-red-500"}>
+            Net: {netDelta >= 0 ? "+" : ""}{fmt(netDelta)} km²
+          </span>
         </p>
       </div>
 
-      <ResponsiveContainer width="100%" height={200}>
-        <Sankey
-          data={{ nodes, links }}
-          nodePadding={16}
-          nodeWidth={14}
-          iterations={0}
-          node={<CustomNode />}
-          link={<CustomLink />}
-          margin={{ top: 8, right: 130, left: 130, bottom: 8 }}
-        >
-          <Tooltip content={<CustomTooltip />} />
-        </Sankey>
-      </ResponsiveContainer>
+      {/* Hover tooltip */}
+      {hover && (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm px-3 py-1.5 text-xs text-gray-700 w-fit">
+          <span className="font-semibold">{hover.label}</span>
+          {" — "}{hover.area.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²
+        </div>
+      )}
 
+      {/* SVG alluvial diagram */}
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          className="w-full"
+          style={{ height: SVG_H }}
+          aria-label={`Forest transition flows ${change.from_year} to ${change.to_year}`}
+        >
+          {/* Year labels */}
+          <text x={srcX + NODE_W / 2} y={9} textAnchor="middle"
+                fontSize={9} fill="#9ca3af" fontWeight="700">{change.from_year}</text>
+          <text x={tgtX + NODE_W / 2} y={9} textAnchor="middle"
+                fontSize={9} fill="#9ca3af" fontWeight="700">{change.to_year}</text>
+
+          {/* Forest Loss flow (Forest → Non-Forest): use a muted red-green */}
+          {forestLoss > 0.01 && (
+            <path
+              d={lossPath}
+              fill="#dc2626"
+              fillOpacity={0.22}
+              stroke="#dc2626"
+              strokeOpacity={0.2}
+              strokeWidth={0.5}
+              style={{ cursor: "pointer" }}
+              onMouseEnter={() => setHover({ label: "Forest → Non-Forest (loss)", area: forestLoss })}
+              onMouseLeave={() => setHover(null)}
+            />
+          )}
+
+          {/* Forest Gain flow (Non-Forest → Forest): green */}
+          {forestGain > 0.01 && (
+            <path
+              d={gainPath}
+              fill={FOREST_COLOUR}
+              fillOpacity={0.32}
+              stroke={FOREST_COLOUR}
+              strokeOpacity={0.2}
+              strokeWidth={0.5}
+              style={{ cursor: "pointer" }}
+              onMouseEnter={() => setHover({ label: "Non-Forest → Forest (gain)", area: forestGain })}
+              onMouseLeave={() => setHover(null)}
+            />
+          )}
+
+          {/* Source nodes */}
+          <rect x={srcX} y={srcForestY} width={NODE_W} height={srcForestH} fill={FOREST_COLOUR} rx={3} />
+          <text x={srcX - 7} y={srcForestY + srcForestH / 2}
+                textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#374151">
+            Forest
+          </text>
+
+          <rect x={srcX} y={srcNonY} width={NODE_W} height={srcNonH} fill={NON_FOREST_COLOUR} rx={3} />
+          <text x={srcX - 7} y={srcNonY + srcNonH / 2}
+                textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#374151">
+            Non-Forest
+          </text>
+
+          {/* Target nodes */}
+          <rect x={tgtX} y={tgtForestY} width={NODE_W} height={tgtForestH} fill={FOREST_COLOUR} rx={3} />
+          <text x={tgtX + NODE_W + 7} y={tgtForestY + tgtForestH / 2}
+                textAnchor="start" dominantBaseline="middle" fontSize={10} fill="#374151">
+            Forest
+          </text>
+
+          <rect x={tgtX} y={tgtNonY} width={NODE_W} height={tgtNonH} fill={NON_FOREST_COLOUR} rx={3} />
+          <text x={tgtX + NODE_W + 7} y={tgtNonY + tgtNonH / 2}
+                textAnchor="start" dominantBaseline="middle" fontSize={10} fill="#374151">
+            Non-Forest
+          </text>
+        </svg>
+      </div>
+
+      {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-red-50 border border-red-100 rounded-xl p-3">
-          <p className="text-[10px] font-semibold text-red-500 uppercase tracking-wide mb-0.5">Forest Lost</p>
+          <p className="text-[10px] font-semibold text-red-500 uppercase tracking-wide mb-0.5">
+            Forest Lost
+          </p>
           <p className="text-sm font-bold text-red-700 tabular-nums">
-            {forestLoss.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+            {fmt(forestLoss)} km²
           </p>
           <p className="text-[10px] text-red-400">converted to non-forest</p>
         </div>
         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
-          <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide mb-0.5">Forest Gained</p>
+          <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide mb-0.5">
+            Forest Gained
+          </p>
           <p className="text-sm font-bold text-emerald-700 tabular-nums">
-            {forestGain.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²
+            {fmt(forestGain)} km²
           </p>
           <p className="text-[10px] text-emerald-400">recovered from non-forest</p>
         </div>
       </div>
+
+      {/* Within-category reference (non-zero only) */}
+      {(forestStable > 0.01 || nonStable > 0.01) && (
+        <p className="text-[10px] text-gray-400">
+          Within-category changes not shown in diagram:{" "}
+          {forestStable > 0.01 && (
+            <span>forest subtype changes {fmt(forestStable)} km²{nonStable > 0.01 ? " · " : ""}</span>
+          )}
+          {nonStable > 0.01 && <span>non-forest subtype changes {fmt(nonStable)} km²</span>}
+        </p>
+      )}
 
       <p className="text-[10px] text-gray-400">
         Source: ICIMOD Nepal Land Cover · EPSG:32645 · Transitions computed at pixel level (30 m resolution)
