@@ -8,6 +8,7 @@ import { AlluvialChart } from "@/components/AlluvialChart";
 import { ClassificationUploader } from "@/components/ClassificationUploader";
 import { ComparisonBarChart } from "@/components/ComparisonBarChart";
 import { DeltaLineChart } from "@/components/DeltaLineChart";
+import { DetailedTables } from "@/components/DetailedTables";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { LandCoverMap } from "@/components/LandCoverMap";
 import { NetChangeTable } from "@/components/NetChangeTable";
@@ -360,6 +361,11 @@ export default function MunicipalityPage() {
               {/* Static report figures (same images as the PDF) */}
               {result && jobId && isDone && (
                 <ReportFigures jobId={jobId} result={result} />
+              )}
+
+              {/* Detailed data tables (per-class stats + transitions) with CSV export */}
+              {result && availableStats.length > 0 && (
+                <DetailedTables result={result} />
               )}
 
               {!result && !submitError && (
