@@ -65,7 +65,7 @@ export function ReportFigures({ jobId }: Props) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
+      <div className="grid grid-cols-1 gap-5">
         {visible.map((f) => {
           const src = f.url(jobId);
           return (
@@ -88,20 +88,24 @@ export function ReportFigures({ jobId }: Props) {
                 </a>
               </div>
               <a href={src} target="_blank" rel="noopener noreferrer"
-                 className="block rounded-lg border border-gray-200 overflow-hidden bg-gray-50
-                            hover:border-blue-400 transition-colors">
+                 title="Open full size"
+                 className="flex items-center justify-center rounded-lg border border-gray-200
+                            overflow-hidden bg-gray-50 p-2 hover:border-blue-400 transition-colors">
                 {/* Placeholder keeps height while the on-demand PNG is generated */}
                 {!loaded[f.key] && (
-                  <div className="w-full h-56 flex items-center justify-center gap-2 text-xs text-gray-400">
+                  <div className="w-full h-48 flex items-center justify-center gap-2 text-xs text-gray-400">
                     <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
                     Rendering {f.label}…
                   </div>
                 )}
+                {/* Capped display height so square maps don't dominate the page;
+                    click opens the full-resolution image. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={src}
                   alt={f.label}
-                  className={`w-full h-auto object-contain ${loaded[f.key] ? "block" : "hidden"}`}
+                  className={`max-h-[360px] w-auto max-w-full object-contain mx-auto
+                              ${loaded[f.key] ? "block" : "hidden"}`}
                   onLoad={() => setLoaded((prev) => ({ ...prev, [f.key]: true }))}
                   onError={() => setFailed((prev) => ({ ...prev, [f.key]: true }))}
                 />
